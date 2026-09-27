@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
   CalendarDays,
@@ -43,6 +43,7 @@ import type { AcademicYear, SchoolClass, Staff, Student, Term } from '@/types'
 export function ClassDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuth()
   const canManage = user ? canManageClasses(user.role) : false
   const canStudents = user ? canManageStudents(user.role) : false
@@ -119,6 +120,18 @@ export function ClassDetailPage() {
   const activeStudents = useMemo(() => students.filter((s) => s.status === 'ACTIVE'), [students])
   const isMyClass = Boolean(user?.staffId && cls?.classTeacherId === user.staffId)
   const canClassTeacherTools = isMyClass || canManage
+
+  useEffect(() => {
+    const open = searchParams.get('open')
+    if (loading || !open) return
+    if (canClassTeacherTools) {
+      if (open === 'reports') setReportsOpen(true)
+      if (open === 'duty') setDutyOpen(true)
+    }
+    const next = new URLSearchParams(searchParams)
+    next.delete('open')
+    setSearchParams(next, { replace: true })
+  }, [loading, searchParams, canClassTeacherTools, setSearchParams])
 
   function openEdit() {
     if (!cls) return

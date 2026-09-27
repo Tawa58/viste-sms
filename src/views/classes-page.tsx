@@ -5,9 +5,11 @@ import {
   ArrowRightLeft,
   Baby,
   BookOpen,
+  CalendarDays,
   ClipboardList,
   FilePlus2,
   GraduationCap,
+  MessageSquareText,
   Plus,
   School,
   Trash2,
@@ -315,7 +317,8 @@ export function ClassesPage() {
           <div>
             <h2 className="font-display text-lg font-semibold">My class</h2>
             <p className="text-sm text-muted-foreground">
-              Classes where you are the class teacher — mark the daily register and view the student list.
+              Classes where you are the class teacher — mark the daily register, view the student list,
+              write final report comments, and keep the duty roster.
             </p>
           </div>
           {myOwnedClasses.length === 0 ? (
@@ -355,6 +358,18 @@ export function ClassesPage() {
                         <Link to={`/classes/${cls.id}`}>
                           <Users className="h-4 w-4" />
                           Student list
+                        </Link>
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/classes/${cls.id}?open=reports`}>
+                          <MessageSquareText className="h-4 w-4" />
+                          Final report comments
+                        </Link>
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/classes/${cls.id}?open=duty`}>
+                          <CalendarDays className="h-4 w-4" />
+                          Duty roster
                         </Link>
                       </Button>
                     </CardContent>
