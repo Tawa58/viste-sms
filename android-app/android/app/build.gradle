@@ -38,6 +38,10 @@ android {
                 keyAlias signingValue('keyAlias', 'ANDROID_KEY_ALIAS')
                 keyPassword signingValue('keyPassword', 'ANDROID_KEY_PASSWORD')
             }
+            // All schemes: some phone-maker installers and file-sharing apps cannot parse v2-only APKs.
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
         }
     }
     buildTypes {
