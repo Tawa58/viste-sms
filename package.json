@@ -19,7 +19,12 @@
     "desktop:start": "npm --prefix electron run start",
     "desktop:build": "npm --prefix electron run pack",
     "desktop:dist": "npm --prefix electron run dist",
-    "desktop:version": "node electron/scripts/bump-version.mjs"
+    "desktop:version": "node electron/scripts/bump-version.mjs",
+    "android:install": "npm --prefix android-app install",
+    "android:icons": "npm --prefix android-app run icons",
+    "android:apk": "npm --prefix android-app run apk",
+    "android:open": "npm --prefix android-app run open",
+    "android:version": "node android-app/scripts/bump-version.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

@@ -1,4 +1,5 @@
 import type { AttendanceStatus, Student } from '@/types'
+import { printHtmlInApp } from '@/lib/native-app'
 import { fullName } from '@/lib/utils'
 
 type PdfRow = {
@@ -81,6 +82,8 @@ export function downloadAttendanceRegisterPdf(opts: {
   <script>window.onload = function () { setTimeout(function () { window.print(); }, 250); };</script>
 </body>
 </html>`
+
+  if (printHtmlInApp(html, `attendance-${opts.className}-${opts.date}`)) return
 
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
   const url = URL.createObjectURL(blob)

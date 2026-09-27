@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { SearchInput } from '@/components/shared/search-input'
 import { LoadingState } from '@/components/shared/loading-state'
 import { LoginCredentialsCard } from '@/components/shared/login-credentials-card'
+import { isAndroidApp, saveBlobInApp } from '@/lib/native-app'
 import { notify } from '@/lib/notify'
 import { canViewStaffCredentials } from '@/lib/roles'
 import { useAuth } from '@/contexts/auth-context'
@@ -84,10 +85,15 @@ function downloadCredentialsCsv(
   const blob = new Blob([[header.join(','), ...lines].join('\n')], {
     type: 'text/csv;charset=utf-8',
   })
+  const fileName = `teacher-logins-${new Date().toISOString().slice(0, 10)}.csv`
+  if (isAndroidApp()) {
+    void saveBlobInApp(blob, fileName)
+    return
+  }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `teacher-logins-${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = fileName
   a.click()
   URL.revokeObjectURL(url)
 }

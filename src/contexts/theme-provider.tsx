@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { syncAndroidTheme } from '@/lib/native-app'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -37,6 +38,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [theme])
+
+  useEffect(() => {
+    syncAndroidTheme(resolvedTheme === 'dark')
+  }, [resolvedTheme])
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme: setThemeState, resolvedTheme }}>

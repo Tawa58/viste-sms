@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Copy, KeyRound, Printer, RefreshCw, ShieldOff } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { copyText, isAndroidApp, printHtmlInApp } from '@/lib/native-app'
 import { notify } from '@/lib/notify'
 import { formatDate } from '@/lib/utils'
 import { formatPortalMonth } from '@/lib/student-portal'
@@ -33,8 +34,8 @@ function escapeHtml(value: string) {
 
 /** Open a printable sheet of cut-out login slips. */
 export function printPortalSlips(slips: PortalSlip[], title = 'Student portal codes') {
-  const win = window.open('', '_blank', 'width=820,height=900')
-  if (!win) {
+  const win = isAndroidApp() ? null : window.open('', '_blank', 'width=820,height=900')
+  if (!win && !isAndroidApp()) {
     notify.error('Allow pop-ups to print portal codes')
     return
   }
@@ -52,7 +53,7 @@ export function printPortalSlips(slips: PortalSlip[], title = 'Student portal co
       </div>`,
     )
     .join('')
-  win.document.write(`<!doctype html><html><head><title>${escapeHtml(title)}</title>
+  const html = `<!doctype html><html><head><title>${escapeHtml(title)}</title>
     <style>
       body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:16px;color:#0b1b2b}
       h1{font-size:16px;margin:0 0 12px}
@@ -65,7 +66,12 @@ export function printPortalSlips(slips: PortalSlip[], title = 'Student portal co
       .hint{font-size:10px;color:#52657a;margin-top:8px}
       @media print{body{margin:8mm}h1{display:none}}
     </style></head><body><h1>${escapeHtml(title)}</h1><div class="grid">${cards}</div>
-    <script>window.onload=function(){window.print()}</script></body></html>`)
+    <script>window.onload=function(){window.print()}</script></body></html>`
+  if (!win) {
+    printHtmlInApp(html, title)
+    return
+  }
+  win.document.write(html)
   win.document.close()
 }
 
@@ -133,7 +139,7 @@ export function StudentPortalAccessCard({
 
   async function copyCode(code: string) {
     try {
-      await navigator.clipboard.writeText(code)
+      await copyText(code)
       notify.success('Code copied')
     } catch {
       notify.error('Could not copy code')

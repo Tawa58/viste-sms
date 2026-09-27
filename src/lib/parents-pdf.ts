@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { isAndroidApp, saveBlobInApp } from '@/lib/native-app'
 import type { Guardian, Student } from '@/types'
 import { educationLevelName } from '@/lib/education-levels'
 import { fullName } from '@/lib/utils'
@@ -118,5 +119,10 @@ export function downloadParentsPdf(opts: {
     margin: { left: 14, right: 14 },
   })
 
-  doc.save(`parents-${opts.variant}-${date}.pdf`)
+  const name = `parents-${opts.variant}-${date}.pdf`
+  if (isAndroidApp()) {
+    void saveBlobInApp(doc.output('blob'), name)
+    return
+  }
+  doc.save(name)
 }

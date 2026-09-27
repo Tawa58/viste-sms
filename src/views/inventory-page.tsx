@@ -30,6 +30,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { useFileObjectUrl } from '@/hooks/use-file-object-url'
 import { catalogService } from '@/services/api'
 import { fileService } from '@/services/files'
+import { isAndroidApp, saveBlobInApp } from '@/lib/native-app'
 import { notify } from '@/lib/notify'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { InventoryAssetStatus, InventoryItem } from '@/types'
@@ -61,7 +62,19 @@ function ReceiptThumb({
   if (!fileId) return <span className="text-xs text-muted-foreground">—</span>
   if (!url) return <span className="text-xs text-muted-foreground">…</span>
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="inline-block">
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-block"
+      onClick={(e) => {
+        if (!isAndroidApp()) return
+        e.preventDefault()
+        void fetch(url)
+          .then((r) => r.blob())
+          .then((blob) => saveBlobInApp(blob, `receipt-${fileId}.${blob.type.split('/')[1] || 'jpg'}`))
+      }}
+    >
       <img src={url} alt="Receipt" className="h-10 w-10 rounded-md object-cover ring-1 ring-border" />
     </a>
   )

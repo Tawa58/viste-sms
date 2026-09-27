@@ -1,0 +1,25 @@
+{
+  "name": "viste-sms-android",
+  "version": "1.0.0",
+  "description": "Viste SMS — Android app for the Viste School Management System",
+  "author": "Viste High School",
+  "private": true,
+  "scripts": {
+    "icons": "node scripts/generate-icons.mjs",
+    "sync": "cap sync android",
+    "open": "cap open android",
+    "apk": "npm run sync && node scripts/gradle.mjs assembleRelease",
+    "aab": "npm run sync && node scripts/gradle.mjs bundleRelease",
+    "apk:debug": "npm run sync && node scripts/gradle.mjs assembleDebug",
+    "version:bump": "node scripts/bump-version.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
+    "sharp": "^0.34.0"
+  }
+}

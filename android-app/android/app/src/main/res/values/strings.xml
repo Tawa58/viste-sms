@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Viste SMS</string>
+    <string name="title_activity_main">Viste SMS</string>
+    <string name="package_name">school.viste.sms</string>
+    <string name="custom_url_scheme">school.viste.sms</string>
+</resources>

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Check, Copy, Eye, EyeOff, KeyRound, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { copyText } from '@/lib/native-app'
 import { notify } from '@/lib/notify'
 import type { StaffLoginCredential } from '@/types'
 
@@ -54,7 +55,7 @@ export function LoginCredentialsCard({
 
   async function copy(value: string, kind: 'email' | 'password') {
     try {
-      await navigator.clipboard.writeText(value)
+      await copyText(value)
       setCopied(kind)
       notify.success(kind === 'email' ? 'Email copied' : 'Password copied')
       window.setTimeout(() => setCopied(null), 1500)

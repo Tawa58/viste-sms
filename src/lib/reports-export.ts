@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { isAndroidApp, saveBlobInApp } from '@/lib/native-app'
 
 export type ReportKind =
   | 'students'
@@ -47,10 +48,15 @@ export function downloadReportCsv(table: ReportTable, filename: string) {
   ]
   if (table.summary) lines.push('', escapeCsv(table.summary))
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const name = filename.endsWith('.csv') ? filename : `${filename}.csv`
+  if (isAndroidApp()) {
+    void saveBlobInApp(blob, name)
+    return
+  }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = filename.endsWith('.csv') ? filename : `${filename}.csv`
+  a.download = name
   a.click()
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }
@@ -111,5 +117,9 @@ export function downloadReportPdf(opts: {
   }
 
   const name = opts.filename.endsWith('.pdf') ? opts.filename : `${opts.filename}.pdf`
+  if (isAndroidApp()) {
+    void saveBlobInApp(doc.output('blob'), name)
+    return
+  }
   doc.save(name)
 }

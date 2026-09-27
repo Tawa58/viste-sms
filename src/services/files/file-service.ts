@@ -1,3 +1,4 @@
+import { saveBlobInApp } from '@/lib/native-app'
 import { compressImage } from './compress-image'
 import {
   blobToUint8Array,
@@ -202,6 +203,7 @@ export const fileService = {
     const meta = await this.getFileMetadata(fileId, access)
     if (!meta) throw new Error('File not found')
     const blob = await this.reconstructFile(fileId, access)
+    if (await saveBlobInApp(blob, meta.originalFileName || meta.fileName)) return
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

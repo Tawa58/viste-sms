@@ -1,0 +1,22 @@
+{
+  "appId": "school.viste.sms",
+  "appName": "Viste SMS",
+  "webDir": "www",
+  "server": {
+    "url": "https://viste-sms.vercel.app",
+    "cleartext": false,
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false,
+    "appendUserAgent": "VisteSMSAndroid"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable",
+      "style": "LIGHT"
+    }
+  }
+}
