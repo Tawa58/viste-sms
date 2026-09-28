@@ -22,8 +22,9 @@ export type GeofenceReading = {
 
 export type GeofenceTick = {
   kind: 'idle' | 'exit' | 'return' | 'progress'
-  nextZone: PremisesZone
+  nextZone: PremisesZone | null
   reading: GeofenceReading
+  imprecise?: boolean
   maxDistanceFromCentre?: number
   maxDistanceFromBoundary?: number
 }
@@ -35,8 +36,18 @@ const PROGRESS_STEP_M = 10
 /** GPS accuracy counted in the user's favour is capped so a vague fix can't stretch the fence. */
 const MAX_ACCURACY_ALLOWANCE_M = 40
 
+/**
+ * Fixes vaguer than this (e.g. a desktop PC located by IP, ±20 km) can't show whether
+ * someone is on the premises, so they never count as inside or outside.
+ */
+export const MAX_FIX_ACCURACY_M = 250
+
 export const MIN_GEOFENCE_RADIUS_M = 10
 export const MAX_GEOFENCE_RADIUS_M = 5000
+
+export function isPreciseFix(fix: GeoFix): boolean {
+  return fix.accuracy == null || !Number.isFinite(fix.accuracy) || fix.accuracy <= MAX_FIX_ACCURACY_M
+}
 
 export function haversineMeters(from: GeoPoint, to: GeoPoint): number {
   const lat1 = (from.latitude * Math.PI) / 180
@@ -82,6 +93,7 @@ export function runGeofenceTick(input: {
   openExit: { maxDistanceFromCentre: number; maxDistanceFromBoundary: number } | null
 }): GeofenceTick {
   const reading = evaluatePosition(input.site, input.fix)
+  if (!isPreciseFix(input.fix)) return { kind: 'idle', nextZone: input.zone, reading, imprecise: true }
   const nextZone = resolveZone(
     input.zone,
     reading.fromCentre,

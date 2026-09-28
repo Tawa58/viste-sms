@@ -5,6 +5,7 @@ import {
   formatMeters,
   gpsAccuracyAllowance,
   haversineMeters,
+  isPreciseFix,
   resolveZone,
   runGeofenceTick,
   type GeofenceSite,
@@ -54,6 +55,19 @@ describe('geofence', () => {
     expect(runGeofenceTick({ zone: 'outside', site, fix: north(20), openExit: open }).kind).toBe(
       'return',
     )
+  })
+
+  it('ignores fixes too vague to place someone on or off the premises', () => {
+    expect(isPreciseFix({ ...north(0), accuracy: 60 })).toBe(true)
+    expect(isPreciseFix({ ...north(0), accuracy: null })).toBe(true)
+    expect(isPreciseFix({ ...north(0), accuracy: 20_000 })).toBe(false)
+    const vague = runGeofenceTick({
+      zone: 'inside',
+      site,
+      fix: { ...north(1200), accuracy: 20_000 },
+      openExit: null,
+    })
+    expect(vague).toMatchObject({ kind: 'idle', nextZone: 'inside', imprecise: true })
   })
 
   it('formats durations and distances', () => {

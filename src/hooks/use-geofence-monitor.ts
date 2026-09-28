@@ -31,6 +31,7 @@ export function useGeofenceMonitor(opts: {
   const [gpsLoading, setGpsLoading] = useState(true)
   const [reading, setReading] = useState<GeofenceReading | null>(null)
   const [zone, setZone] = useState<PremisesZone | null>(null)
+  const [imprecise, setImprecise] = useState(false)
   const [events, setEvents] = useState<StaffBoundaryEvent[]>(initialEvents)
   const [syncError, setSyncError] = useState('')
   const [reasonSaving, setReasonSaving] = useState(false)
@@ -72,6 +73,7 @@ export function useGeofenceMonitor(opts: {
       })
       setReading(tick.reading)
       setZone(tick.nextZone)
+      setImprecise(Boolean(tick.imprecise))
       if (!trackingRef.current || tick.kind === 'idle') return
 
       busyRef.current = true
@@ -163,6 +165,7 @@ export function useGeofenceMonitor(opts: {
     fix: gps?.ok ? gps.fix : null,
     reading,
     zone,
+    imprecise,
     events,
     openEvent,
     lastClosed,

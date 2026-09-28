@@ -14,7 +14,13 @@ import {
   isLateCheckIn,
   siteFromSettings,
 } from '@/lib/checkin'
-import { evaluatePosition, roundMeters, type GeofenceSite } from '@/lib/geofence'
+import {
+  evaluatePosition,
+  formatMeters,
+  isPreciseFix,
+  roundMeters,
+  type GeofenceSite,
+} from '@/lib/geofence'
 import type {
   BoundaryUpdateResult,
   CheckinAdminBundle,
@@ -224,6 +230,10 @@ function positionFields(prefix: 'checkIn' | 'checkOut', pos: CheckinPosition, si
   }
 }
 
+function impreciseMessage(accuracy: number | null | undefined) {
+  return `Your location is only accurate to within ±${formatMeters(accuracy ?? 0)}, which can’t confirm you are on the school premises. Use a phone with location turned on, then try again.`
+}
+
 function outsideMessage(action: 'check in' | 'check out', fromBoundary: number) {
   return `You are about ${Math.max(1, Math.round(fromBoundary))} m outside the school boundary. Move onto the school premises to ${action}.`
 }
@@ -243,6 +253,7 @@ export async function punch(
   const prefix = input.action === 'CHECK_IN' ? 'checkIn' : 'checkOut'
   const { reading, fields } = positionFields(prefix, input, site)
 
+  if (settings.requireInside && !isPreciseFix(input)) throw badRequest(impreciseMessage(input.accuracy))
   if (settings.requireInside && !reading.inside) {
     throw badRequest(
       outsideMessage(input.action === 'CHECK_IN' ? 'check in' : 'check out', reading.fromBoundary),
@@ -360,6 +371,7 @@ export async function updateBoundary(
       }
     }
 
+    if (!isPreciseFix(input)) throw badRequest(impreciseMessage(input.accuracy))
     const record = await loadOpenSession(tx, checkinRef)
     const reading = evaluatePosition(site, input)
 

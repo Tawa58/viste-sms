@@ -19,6 +19,12 @@ export function isAndroidApp(): boolean {
   return bridge() !== null
 }
 
+/** True inside the Viste SMS Windows desktop app (electron/), which exposes `window.visteDesktop`. */
+export function isDesktopApp(): boolean {
+  if (typeof window === 'undefined') return false
+  return Boolean((window as unknown as { visteDesktop?: { isDesktop?: boolean } }).visteDesktop?.isDesktop)
+}
+
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()

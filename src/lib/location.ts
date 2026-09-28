@@ -1,4 +1,4 @@
-import { isAndroidApp } from '@/lib/native-app'
+import { isAndroidApp, isDesktopApp } from '@/lib/native-app'
 
 export type LocationFix = {
   latitude: number
@@ -15,10 +15,30 @@ export type LocationResult =
 const FIX_OPTIONS: PositionOptions = { enableHighAccuracy: true, timeout: 20_000, maximumAge: 5_000 }
 const WATCH_OPTIONS: PositionOptions = { enableHighAccuracy: true, timeout: 20_000, maximumAge: 3_000 }
 
+const WINDOWS_LOCATION_HELP =
+  'Turn on Location in Windows Settings → Privacy & security → Location (including “Let desktop apps access your location”), then try again.'
+
 function deniedMessage() {
-  return isAndroidApp()
-    ? 'Location is blocked for Viste SMS. Allow location in Android Settings → Apps → Viste SMS → Permissions, then try again. If there is no location option, install the latest app from the Viste SMS download page.'
-    : 'Location permission was denied. Allow location for this site in your browser settings, then try again.'
+  if (isAndroidApp()) {
+    return 'Location is blocked for Viste SMS. Allow location in Android Settings → Apps → Viste SMS → Permissions, then try again. If there is no location option, install the latest app from the Viste SMS download page.'
+  }
+  if (isDesktopApp()) {
+    return `Location is blocked. ${WINDOWS_LOCATION_HELP} If it still fails, update Viste SMS from Help → Check for updates and restart the app.`
+  }
+  return 'Location permission was denied. Allow location for this site in your browser settings, then try again.'
+}
+
+function unavailableMessage() {
+  return isDesktopApp()
+    ? `Windows could not find this computer’s location. ${WINDOWS_LOCATION_HELP}`
+    : 'GPS is unavailable. Turn on location services and try again.'
+}
+
+/** Shown when a fix is too vague to tell whether someone is on the school premises. */
+export function impreciseLocationMessage(accuracyText: string) {
+  return isDesktopApp()
+    ? `This computer can only place itself within ${accuracyText}, which can’t confirm you are at school. Connect to Wi-Fi and turn on Windows location, or check in from your phone.`
+    : `Your location is only accurate to within ${accuracyText}. Turn on precise location, move near a window or outside, then tap Refresh.`
 }
 
 function fromError(error: GeolocationPositionError): LocationResult {
@@ -29,7 +49,7 @@ function fromError(error: GeolocationPositionError): LocationResult {
     return {
       ok: false,
       reason: 'position_unavailable',
-      message: 'GPS is unavailable. Turn on location services and try again.',
+      message: unavailableMessage(),
     }
   }
   if (error.code === error.TIMEOUT) {

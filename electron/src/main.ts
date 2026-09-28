@@ -19,7 +19,7 @@ import { checkForUpdatesManually, initAutoUpdates } from './updater'
 const appUrl = resolveAppUrl()
 let mainWindow: BrowserWindow | null = null
 
-/** Permissions the web app actually uses (copy buttons). Everything else is denied. */
+/** Permissions the web app actually uses (copy buttons, daily check-in location). Everything else is denied. */
 const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'fullscreen', 'geolocation'])
 
 function assetPath(...parts: string[]) {

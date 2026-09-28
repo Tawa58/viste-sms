@@ -45,6 +45,7 @@ import {
   siteFromSettings,
 } from '@/lib/checkin'
 import { formatDurationClock, formatDurationShort, formatMeters } from '@/lib/geofence'
+import { impreciseLocationMessage } from '@/lib/location'
 import { notify } from '@/lib/notify'
 import { hasAppPermission } from '@/lib/roles'
 import { checkinService } from '@/services/checkin'
@@ -203,7 +204,9 @@ function TodayPanel({
     reasonFor ?? (openEvent && !openEvent.reason && dismissedExit !== openEvent.id ? openEvent : null)
 
   const outside = monitor.zone === 'outside'
-  const blockedOutside = bundle.settings.requireInside && outside
+  const { imprecise } = monitor
+  const blockedOutside = bundle.settings.requireInside && outside && !imprecise
+  const blocked = bundle.settings.requireInside && (outside || imprecise)
   const todayLabel = new Date(bundle.serverTime).toLocaleDateString('en-GB', {
     weekday: 'long',
     day: 'numeric',
@@ -279,7 +282,7 @@ function TodayPanel({
             <div className="rounded-lg border border-border px-3 py-2.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="flex items-center gap-2 text-sm font-medium">
-                  {gps?.ok ? (
+                  {gps?.ok && !imprecise ? (
                     <LocateFixed className="h-4 w-4 text-success" />
                   ) : (
                     <MapPinOff className="h-4 w-4 text-warning" />
@@ -287,7 +290,9 @@ function TodayPanel({
                   {monitor.gpsLoading && !gps
                     ? 'Finding your location…'
                     : gps?.ok
-                      ? 'GPS location verified'
+                      ? imprecise
+                        ? 'Location not precise enough'
+                        : 'GPS location verified'
                       : 'GPS location required'}
                 </p>
                 <Button
@@ -308,7 +313,11 @@ function TodayPanel({
               ) : gps && !gps.ok ? (
                 <p className="mt-1 text-xs text-warning">{gps.message}</p>
               ) : null}
-              {site && monitor.reading ? (
+              {gps?.ok && imprecise && gps.fix.accuracy != null ? (
+                <p className="mt-1.5 text-xs text-warning">
+                  {impreciseLocationMessage(`±${formatMeters(gps.fix.accuracy)}`)}
+                </p>
+              ) : site && monitor.reading ? (
                 <p className="mt-1.5 text-xs">
                   {outside ? (
                     <span className="font-medium text-destructive">
@@ -329,7 +338,7 @@ function TodayPanel({
                 <Button
                   className="h-12 w-full text-base"
                   loading={punching}
-                  disabled={!site || !gps?.ok || blockedOutside}
+                  disabled={!site || !gps?.ok || blocked}
                   onClick={() => void punch('CHECK_IN')}
                 >
                   <LogIn className="h-5 w-5" />
@@ -347,7 +356,7 @@ function TodayPanel({
                   variant="outline"
                   className="h-12 w-full text-base"
                   loading={punching}
-                  disabled={!site || !gps?.ok || blockedOutside}
+                  disabled={!site || !gps?.ok || blocked}
                   onClick={() => setConfirmOut(true)}
                 >
                   <LogOut className="h-5 w-5" />
