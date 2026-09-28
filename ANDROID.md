@@ -34,10 +34,11 @@ signed by Google: no APK file, no "unknown apps" setting, no Play Protect warnin
 
 ## Install the APK directly
 
-1. Get `Viste-SMS-<version>.apk` from the GitHub release `android-v<version>`
-   (https://github.com/Tawa58/viste-sms/releases) or from `android-app/release/` after a local build.
-2. Copy or download it to the phone and tap it. Allow *Install unknown apps* for the browser/file
-   manager when Android asks.
+1. On the phone, open **https://viste-sms.vercel.app/download/Viste-SMS.apk** in Chrome (or tap
+   *Download Android app* on the login page). Share this link, not the file: WhatsApp and some
+   browsers/data savers alter or cut APK files, which Android reports as *"There was a problem parsing
+   the package"*. GitHub release links redirect to short-lived URLs and fail the same way on some phones.
+2. Tap the downloaded file. Allow *Install unknown apps* for the browser when Android asks.
 3. Open **Viste SMS** and sign in as usual.
 
 Updates: install the newer APK over the old one (same signing key) — users stay signed in.
@@ -87,6 +88,9 @@ git push origin main --follow-tags
 `.github/workflows/android-release.yml` builds the signed APK and publishes release
 `android-v1.0.1`. Android releases are never marked *Latest*, so the Windows app's auto-updater keeps
 following the desktop `vX.Y.Z` releases. Pushes that touch `android-app/` build a debug APK artifact.
+
+The website download (`public/download/Viste-SMS.apk`) is updated by `npm run android:apk`; commit it
+so users get the new version. For a CI-built release, copy the release APK over that file and commit.
 
 Rollback: phones cannot install a lower `versionCode`, so ship the old code as a new, higher version
 (e.g. revert, then release `1.0.2`).

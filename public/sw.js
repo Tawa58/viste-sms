@@ -19,6 +19,8 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event
+  // App downloads must reach the browser's download manager untouched.
+  if (new URL(request.url).pathname.startsWith('/download/')) return
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).catch(() => caches.match('/offline.html')))
     return

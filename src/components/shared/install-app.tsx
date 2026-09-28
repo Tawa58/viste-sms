@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Copy, Download, Share, SquarePlus } from 'lucide-react'
+import { Copy, Download, Share, Smartphone, SquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { copyText } from '@/lib/native-app'
+import { copyText, isAndroidApp } from '@/lib/native-app'
 import { notify } from '@/lib/notify'
 import { promptInstall, useInstallMode, type InstallMode } from '@/lib/pwa'
 
@@ -77,6 +77,28 @@ export function useInstallApp(): { mode: InstallMode; start: () => void; dialog:
   )
 
   return { mode, start, dialog }
+}
+
+/** Direct APK download from this site (no redirects), shown only in Android phone browsers. */
+export function AndroidApkLink({ className }: { className?: string }) {
+  const [show] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      /android/i.test(navigator.userAgent) &&
+      !isAndroidApp() &&
+      !window.matchMedia('(display-mode: standalone)').matches,
+  )
+  if (!show) return null
+  return (
+    <div className={className}>
+      <Button asChild variant="outline" size="sm">
+        <a href="/download/Viste-SMS.apk" download="Viste-SMS.apk">
+          <Smartphone className="h-4 w-4" />
+          Download Android app
+        </a>
+      </Button>
+    </div>
+  )
 }
 
 /** Small "Install app" button; renders nothing when the app can't or needn't be installed. */
