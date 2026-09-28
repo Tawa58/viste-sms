@@ -159,7 +159,10 @@ export async function apiFetch<T>(
 
   if (method !== 'GET') {
     clearAuthTokenCache()
-    if (url.includes('/students')) invalidateApiCache('/api/v1/students')
+    if (url.includes('/students')) {
+      invalidateApiCache('/api/v1/students')
+      invalidateApiCache('/api/v1/invoices')
+    }
     if (url.includes('/teachers')) invalidateApiCache('/api/v1/teachers')
     if (url.includes('/parents')) invalidateApiCache('/api/v1/parents')
     if (url.includes('/attendance')) invalidateApiCache('/api/v1/attendance')

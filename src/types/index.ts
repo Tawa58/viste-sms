@@ -97,6 +97,14 @@ export interface SchoolProfile {
   updatedBy?: string
 }
 
+/** How a student attends school — drives which term fee they are billed. */
+export type StudentResidency = 'DAY' | 'BOARDER' | 'NON_FORMAL'
+
+/** Term fee categories configured in Settings → Fees. */
+export type FeeCategory = 'BOARDING' | 'DAY' | 'PRIMARY' | 'NON_FORMAL'
+
+export type TermFeeAmounts = Record<FeeCategory, number>
+
 /** Fee and receipt policy for the school. */
 export interface FeePolicy {
   id: 'feePolicy'
@@ -105,6 +113,8 @@ export interface FeePolicy {
   nextReceiptNumber: number
   blockResultsWhenFeesOutstanding: boolean
   overdueGraceDays: number
+  /** Amount billed per student per term, by fee category. */
+  termFees: TermFeeAmounts
   updatedAt?: string
   updatedBy?: string
 }
@@ -123,6 +133,8 @@ export interface Student {
   address: string
   admissionDate: string
   status: StudentStatus
+  /** Day scholar, boarder, or non-formal learner (defaults to day). */
+  residency?: StudentResidency
   classId: string
   streamId: string
   /** Canonical education level id (ecd, grade-1, form-1, …). */
@@ -536,6 +548,11 @@ export interface Invoice {
   total: number
   paid: number
   status: 'OPEN' | 'PARTIAL' | 'PAID' | 'OVERDUE'
+  /** Set on term fee invoices. */
+  termId?: string
+  termName?: string
+  category?: FeeCategory
+  createdAt?: string
 }
 
 export interface Payment {
@@ -547,6 +564,34 @@ export interface Payment {
   status: PaymentStatus
   paidAt: string
   receiptNumber: string
+  recordedByName?: string
+}
+
+export interface RecordPaymentInput {
+  studentId: string
+  invoiceId: string
+  amount: number
+  method: string
+  /** Blank → next receipt number from Settings → Fees. */
+  receiptNumber?: string
+  paidAt?: string
+}
+
+export interface RecordPaymentResult {
+  payment: Payment
+  invoice: Invoice
+  /** True when the student has no outstanding balance left (portal passcode can be issued). */
+  feesCleared: boolean
+}
+
+/** Outcome of billing every active student for a term. */
+export interface TermBillingResult {
+  termId: string
+  termName: string
+  created: number
+  updated: number
+  unchanged: number
+  skipped: number
 }
 
 export interface Announcement {

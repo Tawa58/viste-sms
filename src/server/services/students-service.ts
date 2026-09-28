@@ -18,6 +18,7 @@ import {
 import { getAdminDb } from '@/lib/firebase/admin'
 import { getDoc, newId, queryCollection, setDoc, deleteDoc } from '@/server/repositories/firestore-repo'
 import { getDefaultStreamForClass } from '@/server/services/classes-service'
+import { syncStudentTermInvoice } from '@/server/services/finance-service'
 import type {
   ExemptionCreateInput,
   StudentCreateInput,
@@ -173,6 +174,7 @@ export async function createStudent(
     address: input.address.trim() || '—',
     admissionDate: input.admissionDate,
     status: input.status ?? 'ACTIVE',
+    residency: input.residency ?? 'DAY',
     classId: input.classId,
     streamId,
     educationLevelId,
@@ -205,6 +207,7 @@ export async function createStudent(
     entityId: id,
     requestId,
   })
+  await syncStudentTermInvoice(row)
   return row
 }
 
@@ -292,6 +295,13 @@ export async function updateStudent(
     requestId,
     metadata: { fields: Object.keys(patch) },
   })
+  if (
+    (next.residency ?? 'DAY') !== (current.residency ?? 'DAY') ||
+    next.educationLevelId !== current.educationLevelId ||
+    (next.status === 'ACTIVE' && current.status !== 'ACTIVE')
+  ) {
+    await syncStudentTermInvoice(next)
+  }
   return next
 }
 
@@ -417,6 +427,9 @@ export async function transferStudent(
     },
   })
 
+  if (next.educationLevelId !== student.educationLevelId) {
+    await syncStudentTermInvoice(next)
+  }
   return { student: next, transfer }
 }
 

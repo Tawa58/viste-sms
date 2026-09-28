@@ -81,7 +81,7 @@ const ClubsPage = lazyPage(() => import('@/views/extracurricular-page'), 'ClubsP
 const AttendancePage = lazyPage(() => import('@/views/attendance-page'), 'AttendancePage')
 const ExaminationsPage = lazyPage(() => import('@/views/exams-results-page'), 'ExaminationsPage')
 const ResultsPage = lazyPage(() => import('@/views/exams-results-page'), 'ResultsPage')
-const FeesPage = lazyPage(() => import('@/views/fees-parents-page'), 'FeesPage')
+const FeesPage = lazyPage(() => import('@/views/fees-page'), 'FeesPage')
 const ParentsPage = lazyPage(() => import('@/views/fees-parents-page'), 'ParentsPage')
 const ParentDetailPage = lazyPage(() => import('@/views/fees-parents-page'), 'ParentDetailPage')
 const ReportsPage = lazyPage(() => import('@/views/reports-page'), 'ReportsPage')

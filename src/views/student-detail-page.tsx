@@ -29,6 +29,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { notify } from '@/lib/notify'
 import { canEditStudentLimited, canManageStudents } from '@/lib/roles'
 import { educationLevelName } from '@/lib/education-levels'
+import { feeCategoryFor, feeCategoryLabel, residencyLabel } from '@/lib/fees'
 import { catalogService, studentService } from '@/services/api'
 import { formatCurrency, formatDate, fullName } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -163,6 +164,7 @@ export function StudentDetailPage() {
             address: form.address.trim() || '—',
             admissionDate: form.admissionDate,
             status: form.status,
+            residency: form.residency,
             streamId: form.streamId,
             educationLevelId: form.educationLevelId || undefined,
             academicYearId: form.academicYearId || undefined,
@@ -201,6 +203,12 @@ export function StudentDetailPage() {
       setStudent(updated)
       setGuardians(allGuardians.filter((x) => updated.guardianIds.includes(x.id)))
       setEditOpen(false)
+      if (fullAccess) {
+        void catalogService
+          .getInvoices()
+          .then((inv) => setInvoices(inv.filter((x) => x.studentId === updated.id)))
+          .catch(() => undefined)
+      }
     } finally {
       setSaving(false)
     }
@@ -469,6 +477,19 @@ export function StudentDetailPage() {
                 <dd>{student.admissionNumber}</dd>
               </div>
               <div>
+                <dt className="text-muted-foreground">Student type</dt>
+                <dd>
+                  {residencyLabel(student.residency)} ·{' '}
+                  {feeCategoryLabel(
+                    feeCategoryFor(
+                      student.residency,
+                      student.educationLevelId ||
+                        classes.find((c) => c.id === student.classId)?.educationLevelId,
+                    ),
+                  )}
+                </dd>
+              </div>
+              <div>
                 <dt className="text-muted-foreground">Date of birth</dt>
                 <dd>{formatDate(student.dateOfBirth)}</dd>
               </div>
@@ -617,7 +638,12 @@ export function StudentDetailPage() {
                 <li key={inv.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                   <div>
                     <p className="font-medium">{inv.number}</p>
-                    <p className="text-xs text-muted-foreground">Due {formatDate(inv.dueDate)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {[inv.termName, inv.category ? feeCategoryLabel(inv.category) : null]
+                        .filter(Boolean)
+                        .join(' · ')}
+                      {inv.termName || inv.category ? ' · ' : ''}Due {formatDate(inv.dueDate)}
+                    </p>
                   </div>
                   <div className="text-right">
                     <p>

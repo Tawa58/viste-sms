@@ -29,6 +29,7 @@ export const studentCreateSchema = z.object({
   address: z.string().min(1).max(500),
   admissionDate: isoDateSchema,
   status: studentStatusSchema.default('ACTIVE'),
+  residency: z.enum(['DAY', 'BOARDER', 'NON_FORMAL']).optional(),
   classId: idSchema,
   streamId: idSchema.optional().or(z.literal('')),
   educationLevelId: z.string().min(1).max(40).optional(),
@@ -240,7 +241,8 @@ export const paymentCreateSchema = z.object({
   invoiceId: idSchema,
   amount: z.number().positive().max(1_000_000),
   method: z.string().min(1).max(80),
-  receiptNumber: z.string().min(1).max(80),
+  /** Blank → next number from the fee policy receipt counter. */
+  receiptNumber: z.string().trim().max(80).optional(),
   paidAt: isoDateSchema.optional(),
   idempotencyKey: z.string().min(8).max(128).optional(),
 })
@@ -396,12 +398,26 @@ export const schoolProfileSchema = z.object({
   registrationNumber: z.string().trim().max(80).optional().or(z.literal('')),
 })
 
+const termFeeAmountSchema = z.number().min(0).max(1_000_000)
+
 export const feePolicySchema = z.object({
   currency: z.string().trim().min(3).max(8),
   receiptPrefix: z.string().trim().min(1).max(12),
   nextReceiptNumber: z.number().int().min(1).max(9_999_999),
   blockResultsWhenFeesOutstanding: z.boolean(),
   overdueGraceDays: z.number().int().min(0).max(365),
+  termFees: z
+    .object({
+      BOARDING: termFeeAmountSchema,
+      DAY: termFeeAmountSchema,
+      PRIMARY: termFeeAmountSchema,
+      NON_FORMAL: termFeeAmountSchema,
+    })
+    .optional(),
+})
+
+export const termBillingSchema = z.object({
+  termId: idSchema.optional(),
 })
 
 export const academicSettingsSchema = z.object({

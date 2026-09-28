@@ -515,6 +515,18 @@ export const firestoreCatalogService = {
     const { apiCatalogService } = await import('@/services/api/server-api-services')
     return apiCatalogService.getFeePolicy()
   },
+  async billTerm(termId?: string) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.billTerm(termId)
+  },
+  async recordPayment(input: import('@/types').RecordPaymentInput) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.recordPayment(input)
+  },
+  async reversePayment(id: string) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.reversePayment(id)
+  },
   async updateFeePolicy(
     input: Omit<import('@/types').FeePolicy, 'id' | 'updatedAt' | 'updatedBy'>,
   ) {

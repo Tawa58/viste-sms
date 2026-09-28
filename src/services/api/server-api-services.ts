@@ -32,6 +32,8 @@ import type {
   LibraryLoan,
   Mark,
   Payment,
+  RecordPaymentInput,
+  RecordPaymentResult,
   ResultPortalView,
   RolePermission,
   SchoolClass,
@@ -688,6 +690,18 @@ export const apiCatalogService = {
   getFeeStructures: async (): Promise<FeeStructure[]> => [],
   getInvoices: () => apiFetch<Invoice[]>('/api/v1/invoices'),
   getPayments: () => apiFetch<Payment[]>('/api/v1/payments'),
+  billTerm: (termId?: string) =>
+    apiFetch<import('@/types').TermBillingResult>('/api/v1/invoices', {
+      method: 'POST',
+      body: JSON.stringify(termId ? { termId } : {}),
+    }),
+  recordPayment: (input: RecordPaymentInput) =>
+    apiFetch<RecordPaymentResult>('/api/v1/payments', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  reversePayment: (id: string) =>
+    apiFetch<Payment>(`/api/v1/payments/${id}/reverse`, { method: 'POST' }),
   getAnnouncements: () => apiFetch<Announcement[]>('/api/v1/announcements'),
   getNotifications: () =>
     apiFetch<import('@/types').AppNotification[]>('/api/v1/notifications', {

@@ -861,6 +861,7 @@ const mockCatalogService = {
       nextReceiptNumber: 1001,
       blockResultsWhenFeesOutstanding: true,
       overdueGraceDays: 14,
+      termFees: { BOARDING: 0, DAY: 0, PRIMARY: 0, NON_FORMAL: 0 },
     }),
   updateFeePolicy: async (
     input: Omit<import('@/types').FeePolicy, 'id' | 'updatedAt' | 'updatedBy'>,
@@ -893,6 +894,49 @@ const mockCatalogService = {
   getFeeStructures: (): Promise<FeeStructure[]> => mockRequest(feeStructures),
   getInvoices: (): Promise<Invoice[]> => mockRequest(invoices),
   getPayments: (): Promise<Payment[]> => mockRequest(payments),
+  billTerm: async (_termId?: string) =>
+    mockRequest<import('@/types').TermBillingResult>({
+      termId: 'term-mock',
+      termName: 'Current term',
+      created: 0,
+      updated: 0,
+      unchanged: invoices.length,
+      skipped: 0,
+    }),
+  recordPayment: async (
+    input: import('@/types').RecordPaymentInput,
+  ): Promise<import('@/types').RecordPaymentResult> => {
+    const invoice = invoices.find((i) => i.id === input.invoiceId)
+    if (!invoice) throw new Error('Invoice not found')
+    invoice.paid = Math.min(invoice.total, invoice.paid + input.amount)
+    invoice.status = invoice.paid >= invoice.total ? 'PAID' : 'PARTIAL'
+    const payment: Payment = {
+      id: `pay-${Date.now()}`,
+      studentId: input.studentId,
+      invoiceId: input.invoiceId,
+      amount: input.amount,
+      method: input.method,
+      status: 'CONFIRMED',
+      paidAt: input.paidAt ?? new Date().toISOString(),
+      receiptNumber: input.receiptNumber || `VHS-${1000 + payments.length + 1}`,
+    }
+    payments.unshift(payment)
+    const feesCleared = invoices
+      .filter((i) => i.studentId === input.studentId)
+      .every((i) => i.paid >= i.total)
+    return mockRequest({ payment, invoice: { ...invoice }, feesCleared })
+  },
+  reversePayment: async (id: string): Promise<Payment> => {
+    const payment = payments.find((p) => p.id === id)
+    if (!payment) throw new Error('Payment not found')
+    payment.status = 'REVERSED'
+    const invoice = invoices.find((i) => i.id === payment.invoiceId)
+    if (invoice) {
+      invoice.paid = Math.max(0, invoice.paid - payment.amount)
+      invoice.status = invoice.paid <= 0 ? 'OPEN' : 'PARTIAL'
+    }
+    return mockRequest({ ...payment })
+  },
   getAnnouncements: (): Promise<Announcement[]> => mockRequest(announcements),
   getNotifications: async () => mockRequest([] as import('@/types').AppNotification[]),
   markNotificationRead: async (id: string) =>

@@ -22,6 +22,7 @@ import {
   isStaffRole,
 } from '@/lib/roles'
 import { catalogService } from '@/services/api'
+import { FEE_CATEGORIES, normalizeTermFees } from '@/lib/fees'
 import type {
   AcademicYear,
   AuthUser,
@@ -30,6 +31,7 @@ import type {
   GradingTrack,
   SchoolProfile,
   Term,
+  TermFeeAmounts,
 } from '@/types'
 
 type ProfileForm = {
@@ -1010,10 +1012,22 @@ function AcademicSettingsPanel() {
   )
 }
 
+function feePolicyForm(policy: FeePolicy): Omit<FeePolicy, 'id' | 'updatedAt' | 'updatedBy'> {
+  return {
+    currency: policy.currency,
+    receiptPrefix: policy.receiptPrefix,
+    nextReceiptNumber: policy.nextReceiptNumber,
+    blockResultsWhenFeesOutstanding: policy.blockResultsWhenFeesOutstanding,
+    overdueGraceDays: policy.overdueGraceDays,
+    termFees: normalizeTermFees(policy.termFees),
+  }
+}
+
 function FeePolicyPanel() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<Omit<FeePolicy, 'id' | 'updatedAt' | 'updatedBy'> | null>(null)
+  const [savedFees, setSavedFees] = useState<TermFeeAmounts | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -1021,13 +1035,8 @@ function FeePolicyPanel() {
       try {
         const policy = await catalogService.getFeePolicy()
         if (!mounted) return
-        setForm({
-          currency: policy.currency,
-          receiptPrefix: policy.receiptPrefix,
-          nextReceiptNumber: policy.nextReceiptNumber,
-          blockResultsWhenFeesOutstanding: policy.blockResultsWhenFeesOutstanding,
-          overdueGraceDays: policy.overdueGraceDays,
-        })
+        setForm(feePolicyForm(policy))
+        setSavedFees(normalizeTermFees(policy.termFees))
       } catch (err) {
         console.error(err)
         notify.error('Could not load fee policy')
@@ -1044,18 +1053,32 @@ function FeePolicyPanel() {
     if (!form) return
     setSaving(true)
     try {
+      const previousFees = savedFees
       const next = await notify.process(() => catalogService.updateFeePolicy(form), {
         loading: 'Saving fee policy…',
         success: 'Fee policy saved',
         error: 'Could not save fee policy',
       })
-      setForm({
-        currency: next.currency,
-        receiptPrefix: next.receiptPrefix,
-        nextReceiptNumber: next.nextReceiptNumber,
-        blockResultsWhenFeesOutstanding: next.blockResultsWhenFeesOutstanding,
-        overdueGraceDays: next.overdueGraceDays,
-      })
+      setForm(feePolicyForm(next))
+      setSavedFees(next.termFees)
+      const feesChanged = FEE_CATEGORIES.some(
+        (c) => next.termFees[c.value] !== previousFees?.[c.value],
+      )
+      if (
+        feesChanged &&
+        window.confirm(
+          'Term fees changed. Bill all active students for the current term with the new amounts now?',
+        )
+      ) {
+        const result = await notify.process(() => catalogService.billTerm(), {
+          loading: 'Billing students…',
+          success: 'Term invoices updated',
+          error: 'Could not bill the term',
+        })
+        notify.success(
+          `${result.termName}: ${result.created} new, ${result.updated} updated invoices`,
+        )
+      }
     } finally {
       setSaving(false)
     }
@@ -1074,11 +1097,46 @@ function FeePolicyPanel() {
       <CardHeader>
         <CardTitle>Fee policy</CardTitle>
         <CardDescription>
-          Currency, receipt numbering, and whether unpaid fees block published results.
+          Term fees by student type, currency, receipt numbering, and whether unpaid fees block
+          results.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <section className="space-y-3">
+          <div>
+            <p className="text-sm font-medium">Term fees</p>
+            <p className="text-xs text-muted-foreground">
+              Billed per student each term. The fee follows the student type set when registering or
+              editing a student; ECD to Grade 7 always pay the primary learner fee.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {FEE_CATEGORIES.map((category) => (
+              <Field key={category.value}>
+                <Label htmlFor={`term-fee-${category.value}`}>
+                  {category.label} ({form.currency})
+                </Label>
+                <Input
+                  id={`term-fee-${category.value}`}
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={form.termFees[category.value] || ''}
+                  placeholder="0.00"
+                  onChange={(e) => {
+                    const amount = Math.max(0, Number(e.target.value) || 0)
+                    setForm((f) =>
+                      f ? { ...f, termFees: { ...f.termFees, [category.value]: amount } } : f,
+                    )
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">{category.hint}</p>
+              </Field>
+            ))}
+          </div>
+        </section>
+        <div className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-2">
           <Field>
             <Label>Currency</Label>
             <Select

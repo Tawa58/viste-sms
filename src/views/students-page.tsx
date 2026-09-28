@@ -301,6 +301,7 @@ export function StudentsPage() {
         address: form.address.trim() || '—',
         admissionDate: form.admissionDate,
         status: form.status,
+        residency: form.residency,
         classId: form.classId,
         streamId: form.streamId || undefined,
         educationLevelId: form.educationLevelId || undefined,

@@ -6,6 +6,7 @@ import { Field } from '@/components/ui/field'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { educationLevelName, resolveEducationLevelId } from '@/lib/education-levels'
+import { RESIDENCY_OPTIONS, feeCategoryFor, feeCategoryLabel } from '@/lib/fees'
 import { cn } from '@/lib/utils'
 import type {
   ClubActivity,
@@ -15,6 +16,7 @@ import type {
   Sport,
   Stream,
   Student,
+  StudentResidency,
   StudentStatus,
   Subject,
 } from '@/types'
@@ -43,6 +45,7 @@ export type StudentFormValues = {
   studentNumber: string
   admissionDate: string
   status: StudentStatus
+  residency: StudentResidency
   classId: string
   streamId: string
   educationLevelId: string
@@ -70,6 +73,7 @@ export function studentToFormValues(student?: Student | null): StudentFormValues
     studentNumber: student?.studentNumber ?? '',
     admissionDate: student?.admissionDate ?? new Date().toISOString().slice(0, 10),
     status: student?.status ?? 'ACTIVE',
+    residency: student?.residency ?? 'DAY',
     classId: student?.classId ?? '',
     streamId: student?.streamId ?? '',
     educationLevelId: student?.educationLevelId ?? '',
@@ -446,6 +450,25 @@ export function StudentEditorForm({
               value={values.admissionDate}
               onChange={(e) => setField('admissionDate', e.target.value)}
             />
+          </Field>
+
+          <Field>
+            <Label htmlFor="student-residency">Student type</Label>
+            <Select
+              id="student-residency"
+              value={values.residency}
+              onChange={(e) => setField('residency', e.target.value as StudentResidency)}
+            >
+              {RESIDENCY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Billed the {feeCategoryLabel(feeCategoryFor(values.residency, levelId)).toLowerCase()}{' '}
+              each term.
+            </p>
           </Field>
 
           {mode === 'create' ? (
