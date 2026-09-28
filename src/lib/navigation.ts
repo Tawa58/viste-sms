@@ -19,6 +19,8 @@ import {
   Settings,
   Dumbbell,
   Puzzle,
+  MapPinCheck,
+  UserCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { canAccessPath } from '@/lib/roles'
@@ -37,6 +39,8 @@ export type NavGroup = {
 
 export const mainNav: NavItem[] = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+  { label: 'Check in', to: '/check-in', icon: MapPinCheck },
+  { label: 'Staff attendance', to: '/staff-attendance', icon: UserCheck },
   { label: 'Students', to: '/students', icon: Users },
   { label: 'Teachers & Staff', to: '/teachers', icon: GraduationCap },
   { label: 'Classes', to: '/classes', icon: School },
@@ -62,6 +66,13 @@ export const navGroups: NavGroup[] = [
   {
     label: 'Overview',
     items: [{ label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard }],
+  },
+  {
+    label: 'Daily check-in',
+    items: [
+      { label: 'Check in', to: '/check-in', icon: MapPinCheck },
+      { label: 'Staff attendance', to: '/staff-attendance', icon: UserCheck },
+    ],
   },
   {
     label: 'People',

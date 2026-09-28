@@ -22,6 +22,8 @@ const PATH_PERMISSION: Record<string, string | null> = {
   '/inventory': 'settings.manage',
   '/library': 'students.read',
   '/transport': 'students.read',
+  '/check-in': 'checkin.self',
+  '/staff-attendance': 'checkin.manage',
 }
 
 function pathAllowedByPermissions(pathname: string, permissions: readonly string[]) {
@@ -72,6 +74,7 @@ export const ROLE_ROUTES: Record<UserRole, '*' | string[]> = {
     '/results',
     '/announcements',
     '/reports',
+    '/check-in',
     '/settings',
   ],
   ACCOUNTANT: [
@@ -81,6 +84,7 @@ export const ROLE_ROUTES: Record<UserRole, '*' | string[]> = {
     '/parents',
     '/reports',
     '/announcements',
+    '/check-in',
     '/settings',
   ],
   FINANCE_OFFICER: [
@@ -90,6 +94,7 @@ export const ROLE_ROUTES: Record<UserRole, '*' | string[]> = {
     '/parents',
     '/reports',
     '/announcements',
+    '/check-in',
     '/settings',
   ],
   REGISTRAR: [
@@ -103,6 +108,7 @@ export const ROLE_ROUTES: Record<UserRole, '*' | string[]> = {
     '/attendance',
     '/announcements',
     '/reports',
+    '/check-in',
     '/settings',
   ],
   RECEPTIONIST: [
@@ -110,10 +116,18 @@ export const ROLE_ROUTES: Record<UserRole, '*' | string[]> = {
     '/students',
     '/parents',
     '/announcements',
+    '/check-in',
     '/settings',
   ],
-  LIBRARIAN: ['/dashboard', '/library', '/students', '/announcements', '/settings'],
-  TRANSPORT_MANAGER: ['/dashboard', '/transport', '/students', '/announcements', '/settings'],
+  LIBRARIAN: ['/dashboard', '/library', '/students', '/announcements', '/check-in', '/settings'],
+  TRANSPORT_MANAGER: [
+    '/dashboard',
+    '/transport',
+    '/students',
+    '/announcements',
+    '/check-in',
+    '/settings',
+  ],
   PARENT: [
     '/dashboard',
     '/students',

@@ -39,6 +39,8 @@ export const PERMISSIONS = [
   'roles.manage',
   'settings.manage',
   'audit.read',
+  'checkin.self',
+  'checkin.manage',
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]
@@ -54,9 +56,11 @@ const FINANCE: Permission[] = [
   'payments.read',
   'payments.create',
   'payments.reverse',
+  'checkin.self',
 ]
 
 const TEACHER: Permission[] = [
+  'checkin.self',
   'students.read',
   'students.update',
   'classes.read',
@@ -114,10 +118,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'attendance.read',
     'attendance.create',
     'attendance.update',
+    'checkin.self',
   ],
-  RECEPTIONIST: ['students.read', 'parents.read'],
-  LIBRARIAN: ['students.read'],
-  TRANSPORT_MANAGER: ['students.read'],
+  RECEPTIONIST: ['students.read', 'parents.read', 'checkin.self'],
+  LIBRARIAN: ['students.read', 'checkin.self'],
+  TRANSPORT_MANAGER: ['students.read', 'checkin.self'],
   PARENT,
   STUDENT,
 }
@@ -229,6 +234,8 @@ export const PATH_PERMISSION: Record<string, Permission | null> = {
   '/inventory': 'settings.manage',
   '/library': 'students.read',
   '/transport': 'students.read',
+  '/check-in': 'checkin.self',
+  '/staff-attendance': 'checkin.manage',
 }
 
 export function isPermission(value: string): value is Permission {

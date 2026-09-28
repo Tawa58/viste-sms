@@ -92,6 +92,11 @@ const LibraryPage = lazyPage(() => import('@/views/ops-pages'), 'LibraryPage')
 const TransportPage = lazyPage(() => import('@/views/transport-page'), 'TransportPage')
 const UsersRolesPage = lazyPage(() => import('@/views/users-roles-page'), 'UsersRolesPage')
 const SettingsPage = lazyPage(() => import('@/views/settings-page'), 'SettingsPage')
+const CheckInPage = lazyPage(() => import('@/views/check-in-page'), 'CheckInPage')
+const StaffAttendancePage = lazyPage(
+  () => import('@/views/staff-attendance-page'),
+  'StaffAttendancePage',
+)
 
 function RouteFallback() {
   return <WelcomeSplash />
@@ -127,6 +132,8 @@ export default function App() {
               <Route element={<RoleRoute />}>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/check-in" element={<CheckInPage />} />
+                <Route path="/staff-attendance" element={<StaffAttendancePage />} />
                 <Route path="/students" element={<StudentsPage />} />
                 <Route path="/students/:id" element={<StudentDetailPage />} />
                 <Route path="/teachers" element={<TeachersPage />} />

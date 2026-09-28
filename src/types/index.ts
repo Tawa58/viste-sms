@@ -594,6 +594,178 @@ export interface TermBillingResult {
   skipped: number
 }
 
+/** Daily check-in: school geofence and rules (`settings/checkin`). */
+export interface CheckinSettings {
+  id: 'checkin'
+  siteName: string
+  /** Centre of the school premises; null until an administrator sets it. */
+  latitude: number | null
+  longitude: number | null
+  radiusMeters: number
+  /** Check-in and check-out only succeed inside the boundary. */
+  requireInside: boolean
+  /** HH:mm school time after which a check-in counts as late; '' turns late marking off. */
+  lateAfter: string
+  /** 0 = Sunday … 6 = Saturday. */
+  workingDays: number[]
+  updatedAt?: string
+  updatedBy?: string
+}
+
+export type CheckinSettingsInput = Omit<CheckinSettings, 'id' | 'updatedAt' | 'updatedBy'>
+
+/** One staff member's attendance for one school day (`staffCheckins/{uid}_{date}`). */
+export interface StaffCheckin {
+  id: string
+  uid: string
+  staffId?: string
+  name: string
+  role: UserRole
+  department?: string
+  employeeNumber?: string
+  /** YYYY-MM-DD, school time. */
+  date: string
+  checkInAt: string
+  checkInLatitude: number
+  checkInLongitude: number
+  checkInAccuracy: number | null
+  /** Metres from the centre of the premises. */
+  checkInDistance: number
+  checkInInside: boolean
+  late: boolean
+  checkOutAt?: string
+  checkOutLatitude?: number
+  checkOutLongitude?: number
+  checkOutAccuracy?: number | null
+  checkOutDistance?: number
+  checkOutInside?: boolean
+  /** Premises exit currently in progress. */
+  openExitId?: string | null
+  exitCount: number
+  /** Total closed time off the premises today, in seconds. */
+  secondsOutside: number
+  siteName: string
+  updatedAt: string
+}
+
+/** A period a checked-in staff member spent outside the school boundary. */
+export interface StaffBoundaryEvent {
+  id: string
+  uid: string
+  staffId?: string
+  name: string
+  department?: string
+  date: string
+  /** `${uid}_${YYYY-MM}` for per-person monthly lookups. */
+  monthKey: string
+  status: 'OPEN' | 'CLOSED'
+  exitAt: string
+  returnAt?: string
+  durationSeconds?: number
+  latitude: number
+  longitude: number
+  distanceFromBoundary: number
+  distanceFromCentre: number
+  maxDistanceFromBoundary: number
+  maxDistanceFromCentre: number
+  reason?: string
+  reasonNote?: string
+  closedBy?: 'RETURN' | 'CHECK_OUT'
+  createdAt: string
+  updatedAt: string
+}
+
+export type CheckinMessageKind = 'ABSENCE' | 'ISSUE'
+export type CheckinMessageStatus = 'OPEN' | 'SEEN' | 'RESOLVED'
+
+/** Absence notice or check-in problem sent by a staff member to the administrators. */
+export interface StaffCheckinMessage {
+  id: string
+  uid: string
+  staffId?: string
+  name: string
+  role: UserRole
+  department?: string
+  kind: CheckinMessageKind
+  category: string
+  details: string
+  /** YYYY-MM-DD the absence notice is for. */
+  absenceDate?: string
+  status: CheckinMessageStatus
+  adminReply?: string
+  repliedAt?: string
+  repliedByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CheckinRosterEntry {
+  uid: string
+  staffId?: string
+  name: string
+  role: UserRole
+  department?: string
+  employeeNumber?: string
+  category?: StaffCategory
+}
+
+export interface CheckinTermRange {
+  startDate: string
+  endDate: string
+}
+
+export interface CheckinSelfBundle {
+  settings: CheckinSettings
+  /** YYYY-MM-DD, school time. */
+  today: string
+  serverTime: string
+  month: string
+  todayRecord: StaffCheckin | null
+  todayEvents: StaffBoundaryEvent[]
+  records: StaffCheckin[]
+  events: StaffBoundaryEvent[]
+  messages: StaffCheckinMessage[]
+  terms: CheckinTermRange[]
+}
+
+export interface CheckinAdminBundle {
+  settings: CheckinSettings
+  today: string
+  serverTime: string
+  month: string
+  roster: CheckinRosterEntry[]
+  records: StaffCheckin[]
+  events: StaffBoundaryEvent[]
+  messages: StaffCheckinMessage[]
+  terms: CheckinTermRange[]
+}
+
+export type CheckinPosition = { latitude: number; longitude: number; accuracy?: number | null }
+
+export type CheckinPunchInput = CheckinPosition & { action: 'CHECK_IN' | 'CHECK_OUT' }
+
+export type BoundaryUpdateInput =
+  | ({ action: 'EXIT' } & CheckinPosition)
+  | ({ action: 'PROGRESS' | 'RETURN'; eventId: string } & CheckinPosition)
+  | { action: 'REASON'; eventId: string; reason: string; reasonNote?: string }
+
+export interface BoundaryUpdateResult {
+  event: StaffBoundaryEvent
+  record: StaffCheckin
+}
+
+export interface CheckinMessageInput {
+  kind: CheckinMessageKind
+  category: string
+  details: string
+  absenceDate?: string
+}
+
+export interface CheckinMessageUpdate {
+  status?: CheckinMessageStatus
+  adminReply?: string
+}
+
 export interface Announcement {
   id: string
   title: string

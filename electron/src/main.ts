@@ -20,7 +20,7 @@ const appUrl = resolveAppUrl()
 let mainWindow: BrowserWindow | null = null
 
 /** Permissions the web app actually uses (copy buttons). Everything else is denied. */
-const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'fullscreen'])
+const ALLOWED_PERMISSIONS = new Set(['clipboard-sanitized-write', 'fullscreen', 'geolocation'])
 
 function assetPath(...parts: string[]) {
   return path.join(__dirname, '..', 'assets', ...parts)
