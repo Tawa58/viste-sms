@@ -5,6 +5,7 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
+  Download,
   LogOut,
   Menu,
   Search,
@@ -18,6 +19,7 @@ import { SchoolLogo } from '@/components/shared/school-logo'
 import { ThemeToggle } from '@/components/shared/theme-toggle'
 import { PageTransition } from '@/components/shared/page-transition'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { useInstallApp } from '@/components/shared/install-app'
 import { ResolvedAvatar } from '@/components/shared/resolved-avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -106,6 +108,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [logoutOpen, setLogoutOpen] = useState(false)
+  const installApp = useInstallApp()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const canSeeAdminNotifications = isAdminNotificationsRole(user?.role)
   const unreadCount = notifications.filter((n) => !n.read).length
@@ -530,6 +533,11 @@ export function AppShell() {
                   <DropdownMenuItem onClick={() => navigate('/settings')}>
                     <Settings className="h-4 w-4" /> Settings
                   </DropdownMenuItem>
+                  {installApp.mode ? (
+                    <DropdownMenuItem onClick={installApp.start}>
+                      <Download className="h-4 w-4" /> Install app
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem onClick={() => setLogoutOpen(true)}>
                     <LogOut className="h-4 w-4" /> Sign out
                   </DropdownMenuItem>
@@ -552,6 +560,8 @@ export function AppShell() {
           </Link>
         </footer>
       </div>
+
+      {installApp.dialog}
 
       <ConfirmDialog
         open={logoutOpen}

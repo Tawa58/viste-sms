@@ -20,7 +20,19 @@ The `mobile/` folder is an unrelated Expo template and is not used by this app.
 | Icon & splash | The school logo on white, scaled to fit fully inside every launcher shape and the Android 12+ splash circle. |
 | Security | Loads only the Viste SMS site over HTTPS; other links open in the browser. The native bridge (`window.VisteAndroid`, see `src/lib/native-app.ts`) only answers the Viste SMS site. App data is excluded from cloud backup. No secrets or service-account keys are in the app. |
 
-## Install on phones
+## Install from the website (recommended for users' phones)
+
+The website is an installable web app (PWA). On any Android phone with Chrome — or an iPhone with
+Safari — users open https://viste-sms.vercel.app and tap **Install app** (under the sign-in form, or
+in the user menu after signing in). Chrome installs Viste SMS with the school logo, full screen,
+signed by Google: no APK file, no "unknown apps" setting, no Play Protect warning, automatic updates.
+
+- Phone-maker and in-app browsers that cannot install apps show "open this page in Chrome" with a
+  copy-link button; iPhones show the Share → Add to Home Screen steps.
+- `public/sw.js` only serves `public/offline.html` when a page cannot load; it never caches school
+  data. Icons live in `public/pwa/` (regenerate with `npm run android:icons`).
+
+## Install the APK directly
 
 1. Get `Viste-SMS-<version>.apk` from the GitHub release `android-v<version>`
    (https://github.com/Tawa58/viste-sms/releases) or from `android-app/release/` after a local build.

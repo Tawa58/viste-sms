@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { BrandMark } from '@/components/shared/brand-mark'
+import { InstallAppButton } from '@/components/shared/install-app'
 import {
   LoginAuthFeedback,
   type LoginAuthStatus,
@@ -278,6 +279,8 @@ export function LoginPage() {
                   Sign in
                 </Button>
               </form>
+
+              <InstallAppButton className="mt-4 flex justify-center" />
 
               {USE_MOCK_API ? (
                 <div className="mt-6 rounded-2xl border border-dashed border-border bg-muted/40 p-4">

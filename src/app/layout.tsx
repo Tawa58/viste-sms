@@ -19,9 +19,11 @@ export const metadata: Metadata = {
       { url: '/favicon.png', type: 'image/png' },
       { url: '/icon.png', type: 'image/png' },
     ],
-    apple: [{ url: '/apple-icon.png', type: 'image/png' }],
+    apple: [{ url: '/pwa/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
     shortcut: '/favicon.png',
   },
+  applicationName: 'Viste SMS',
+  appleWebApp: { capable: true, title: 'Viste SMS', statusBarStyle: 'default' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

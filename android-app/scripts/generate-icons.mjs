@@ -107,6 +107,14 @@ async function main() {
 
   // Store listing icon (Google Play: 512x512, full square, no transparency).
   await write(await logoOnCanvas(logo, 512, 0.44, WHITE), path.join(root, 'store/play-store-icon-512.png'))
+
+  // Website install (PWA) icons. Maskable icons keep the logo inside the 80% safe circle.
+  const pwa = path.resolve(root, '../public/pwa')
+  for (const size of [192, 512]) {
+    await write(await logoOnCanvas(logo, size, 0.46, WHITE), path.join(pwa, `icon-${size}.png`))
+    await write(await logoOnCanvas(logo, size, 0.36, WHITE), path.join(pwa, `maskable-${size}.png`))
+  }
+  await write(await logoOnCanvas(logo, 180, 0.44, WHITE), path.join(pwa, 'apple-touch-icon.png'))
   await write(await logoOnCanvas(logo, 512, 0.5, WHITE), path.join(root, 'www/icon.png'))
   console.log('Icons and splash images written.')
 }
