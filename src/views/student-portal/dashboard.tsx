@@ -127,22 +127,34 @@ function RecentResults({ data }: { data: StudentPortalBundle }) {
             No results have been released yet. They will appear here as soon as your teachers publish them.
           </p>
         ) : (
-          <ul className="space-y-3.5">
-            {latest.rows.slice(0, 6).map((row) => (
-              <li key={row.subject} className="space-y-1.5">
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate font-medium">{row.subject}</span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <span className="tabular-nums text-muted-foreground">{percent(row.pct)}</span>
-                    <Badge variant={scoreTone(row.pct)} className="min-w-8 justify-center">
-                      {row.grade}
-                    </Badge>
-                  </span>
-                </div>
-                <ProgressBar value={row.pct} tone={scoreTone(row.pct)} />
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-hidden rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2.5 font-medium">Subject</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Mark</th>
+                  <th className="px-3 py-2.5 text-center font-medium">%</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Grade</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {latest.rows.slice(0, 6).map((row) => (
+                  <tr key={row.subject} className="even:bg-muted/20">
+                    <td className="px-3 py-2.5 font-medium">{row.subject}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-center tabular-nums text-muted-foreground">
+                      {row.score}/{row.maxScore}
+                    </td>
+                    <td className="px-3 py-2.5 text-center tabular-nums">{percent(row.pct)}</td>
+                    <td className="px-3 py-2.5 text-center">
+                      <Badge variant={scoreTone(row.pct)} className="min-w-8 justify-center">
+                        {row.grade}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -359,7 +371,6 @@ export function StudentDashboardPage() {
             icon={Trophy}
             label="Average"
             value={resultsLocked ? 'Locked' : percent(average, 1)}
-            progress={average}
             hint={
               resultsLocked
                 ? 'Clear fees to view results'

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Award,
@@ -30,7 +30,6 @@ import {
   ATTENDANCE_LABEL,
   AttendanceBadge,
   PortalPage,
-  ProgressBar,
   latestResults,
   money,
   percent,
@@ -234,6 +233,43 @@ const PERIOD_KINDS: { kind: StudentResultPeriodKind; label: string; picker: stri
   { kind: 'YEAR', label: 'Year', picker: 'Select year' },
 ]
 
+function ResultDetailsTable({ details }: { details: [string, string][] }) {
+  const pairs = [details.slice(0, 2), details.slice(2, 4)]
+  const label = 'bg-muted/50 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground'
+  return (
+    <div className="overflow-hidden rounded-xl border border-border">
+      <table className="w-full text-sm sm:hidden">
+        <tbody className="divide-y divide-border">
+          {details.map(([k, v]) => (
+            <tr key={k}>
+              <th scope="row" className={cn(label, 'w-2/5 text-left')}>
+                {k}
+              </th>
+              <td className="px-3 py-2 font-medium">{v || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <table className="hidden w-full text-sm sm:table">
+        <tbody className="divide-y divide-border">
+          {pairs.map((row) => (
+            <tr key={row[0][0]}>
+              {row.map(([k, v]) => (
+                <Fragment key={k}>
+                  <th scope="row" className={cn(label, 'w-[16%] text-left')}>
+                    {k}
+                  </th>
+                  <td className="w-[34%] px-3 py-2 font-medium">{v || '—'}</td>
+                </Fragment>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function ResultSheet({ data, period }: { data: StudentPortalBundle; period: StudentResultPeriod }) {
   const { profile, school } = data
   const best = [...period.rows].sort((a, b) => b.percent - a.percent)[0]
@@ -257,54 +293,69 @@ function ResultSheet({ data, period }: { data: StudentPortalBundle; period: Stud
           </div>
         </div>
         <CardContent className="space-y-4 pt-4 sm:pt-5">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border bg-muted/20 p-3 text-sm sm:grid-cols-4">
-            {[
-              ['Student', [profile.firstName, profile.middleName, profile.lastName].filter(Boolean).join(' ')],
+          <ResultDetailsTable
+            details={[
+              ['Student name', [profile.firstName, profile.middleName, profile.lastName].filter(Boolean).join(' ')],
               ['Reg. number', profile.studentNumber],
               ['Class', [profile.className, profile.streamName].filter(Boolean).join(' ')],
               [PERIOD_KINDS.find((k) => k.kind === period.kind)?.label ?? 'Period', period.label],
-            ].map(([label, value]) => (
-              <div key={label} className="min-w-0">
-                <dt className="text-xs text-muted-foreground">{label}</dt>
-                <dd className="truncate font-medium">{value}</dd>
-              </div>
-            ))}
-          </dl>
+            ]}
+          />
 
-          <ul className="divide-y divide-border rounded-xl border border-border">
-            {period.rows.map((r) => (
-              <li key={r.subject} className="space-y-1.5 px-4 py-3">
-                <div className="flex items-start justify-between gap-3 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium">{r.subject}</p>
-                    {r.teacherName ? <p className="text-xs text-muted-foreground">{r.teacherName}</p> : null}
-                  </div>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <span className="hidden tabular-nums text-muted-foreground sm:inline">
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full min-w-[46rem] text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
+                  <th className="px-3 py-2.5 font-medium">Subject</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Mark</th>
+                  <th className="px-3 py-2.5 text-center font-medium">%</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Grade</th>
+                  <th className="px-3 py-2.5 font-medium">Subject teacher</th>
+                  <th className="px-3 py-2.5 font-medium">Teacher's comment</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {period.rows.map((r, i) => (
+                  <tr key={r.subject} className="align-top even:bg-muted/20">
+                    <td className="px-3 py-2.5 text-center tabular-nums text-muted-foreground">{i + 1}</td>
+                    <td className="px-3 py-2.5 font-medium">{r.subject}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-center tabular-nums text-muted-foreground">
                       {formatMark(r.score, r.maxScore)}
-                    </span>
-                    <span className="w-12 text-right font-medium tabular-nums">{formatPercent(r.percent)}</span>
-                    <Badge variant={scoreTone(r.percent)} className="min-w-8 justify-center">
-                      {r.grade}
-                    </Badge>
-                  </span>
-                </div>
-                <ProgressBar value={r.percent} tone={scoreTone(r.percent)} />
-                {r.comment ? <p className="text-xs italic text-muted-foreground">“{r.comment}”</p> : null}
-              </li>
-            ))}
-            <li className="flex items-center justify-between bg-muted/30 px-4 py-2.5 text-sm font-semibold">
-              <span>Average</span>
-              <span className="flex items-center gap-2">
-                <span className="tabular-nums">{formatPercent(period.average)}</span>
-                {period.averageGrade ? (
-                  <Badge variant={scoreTone(period.average ?? 0)} className="min-w-8 justify-center">
-                    {period.averageGrade}
-                  </Badge>
-                ) : null}
-              </span>
-            </li>
-          </ul>
+                    </td>
+                    <td className="px-3 py-2.5 text-center font-medium tabular-nums">{formatPercent(r.percent)}</td>
+                    <td className="px-3 py-2.5 text-center">
+                      <Badge variant={scoreTone(r.percent)} className="min-w-8 justify-center">
+                        {r.grade}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{r.teacherName ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{r.comment ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t border-border bg-muted/40 font-semibold">
+                <tr>
+                  <td />
+                  <td className="px-3 py-2.5">
+                    Average ({period.rows.length} subject{period.rows.length === 1 ? '' : 's'})
+                  </td>
+                  <td />
+                  <td className="px-3 py-2.5 text-center tabular-nums">{formatPercent(period.average)}</td>
+                  <td className="px-3 py-2.5 text-center">
+                    {period.averageGrade ? (
+                      <Badge variant={scoreTone(period.average ?? 0)} className="min-w-8 justify-center">
+                        {period.averageGrade}
+                      </Badge>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
           <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
             <p className="text-sm font-medium">Class teacher's comment</p>
@@ -627,14 +678,14 @@ export function MySubjectsPage() {
                       {s.teachers.length ? s.teachers.join(', ') : 'Teacher not assigned yet'}
                     </p>
                     {result ? (
-                      <div className="mt-auto space-y-1.5">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Latest · {latest?.label}</span>
-                          <span className="font-medium text-foreground">
-                            {percent(result.pct)} · {result.grade}
-                          </span>
-                        </div>
-                        <ProgressBar value={result.pct} tone={scoreTone(result.pct)} />
+                      <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
+                        <span>Latest · {latest?.label}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-medium tabular-nums text-foreground">{percent(result.pct)}</span>
+                          <Badge variant={scoreTone(result.pct)} className="min-w-8 justify-center">
+                            {result.grade}
+                          </Badge>
+                        </span>
                       </div>
                     ) : null}
                   </CardContent>
