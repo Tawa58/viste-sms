@@ -5,6 +5,7 @@ import type {
   StudentPortalAttendance,
   StudentPortalBundle,
   StudentPortalExam,
+  StudentResultPeriod,
 } from '@/types'
 
 export type StudentPortalService = {
@@ -105,8 +106,69 @@ function demoBundle(): StudentPortalBundle {
     })),
   ]
 
+  const teacherOf: Record<string, string> = {
+    Mathematics: 'Mr T. Ncube',
+    Biology: 'Dr P. Mutasa',
+    'Computer Science': 'Mr K. Dube',
+    Chemistry: 'Mrs L. Sibanda',
+    'English Language': 'Mrs R. Chikore',
+  }
+  const grade = (pct: number) => (pct >= 80 ? 'A' : pct >= 70 ? 'B' : pct >= 60 ? 'C' : pct >= 50 ? 'D' : 'E')
+  const sheet = (
+    id: string,
+    kind: StudentResultPeriod['kind'],
+    label: string,
+    sortKey: string,
+    basis: string,
+    rows: { subject: string; score: number; grade?: string; comment?: string }[],
+    classTeacherComment?: string,
+  ): StudentResultPeriod => {
+    const full = rows.map((r) => ({
+      subject: r.subject,
+      score: r.score,
+      maxScore: 100,
+      percent: r.score,
+      grade: r.grade ?? grade(r.score),
+      teacherName: teacherOf[r.subject],
+      comment: r.comment,
+    }))
+    const average = avg(full)
+    return { id, kind, label, year: String(year), sortKey, basis, rows: full, average, averageGrade: grade(average), classTeacherComment }
+  }
+  const term2Rows = previous.map((r, i) => ({
+    subject: r.subject,
+    score: r.score - 2,
+    comment: ['Good steady progress.', 'Outstanding understanding of genetics.', 'Excellent project work.', 'Needs more practice with calculations.', 'Well-argued essays.'][i],
+  }))
+  const term3Rows = latest.map((r, i) => ({ subject: r.subject, score: Math.round(((r.score + previous[i]!.score) / 2) * 10) / 10, comment: r.comment }))
+  const term2Comment = 'A very good term, Tawanda. Keep aiming high in Chemistry.'
+  const term3Comment = 'Tawanda is a focused, respectful learner. Keep up the consistency into the final exams.'
+  const resultPeriods: StudentResultPeriod[] = [
+    sheet(`month:${thisMonth}`, 'MONTH', monthLabel(thisMonth), thisMonth, 'Monthly tests', latest, term3Comment),
+    sheet(`month:${lastMonth}`, 'MONTH', monthLabel(lastMonth), lastMonth, 'Monthly tests', previous, term2Comment),
+    sheet('term:demo-term-3', 'TERM', `Term 3 ${year}`, `${year}-09-08`, 'Average of monthly tests', term3Rows, term3Comment),
+    sheet('term:demo-term-2', 'TERM', `Term 2 ${year}`, `${year}-05-05`, 'End-of-term examinations', term2Rows, term2Comment),
+    sheet(
+      `year:${year}`,
+      'YEAR',
+      String(year),
+      String(year),
+      'Average of Term 2, Term 3',
+      term3Rows.map((r, i) => ({ subject: r.subject, score: Math.round(((r.score + term2Rows[i]!.score) / 2) * 10) / 10, comment: r.comment })),
+      term3Comment,
+    ),
+  ]
+
   return {
     generatedAt: now.toISOString(),
+    school: {
+      name: 'Viste High School',
+      motto: 'Excellence through knowledge',
+      address: 'Harare, Zimbabwe',
+      phone: '+263 24 270 0000',
+      email: 'info@viste.school',
+    },
+    resultPeriods,
     profile: {
       id: 'demo-student',
       studentNumber: 'VST-2021-0147',

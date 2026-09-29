@@ -1151,14 +1151,46 @@ export interface StudentPortalActivities {
   house?: { name: string; color?: string }
 }
 
+export type StudentResultPeriodKind = 'TERM' | 'MONTH' | 'YEAR'
+
+export interface StudentResultRow {
+  subject: string
+  score: number
+  maxScore: number
+  percent: number
+  grade: string
+  teacherName?: string
+  comment?: string
+}
+
+/** One selectable results sheet: a term, a month, or a whole year. */
+export interface StudentResultPeriod {
+  /** e.g. `term:t3-2026`, `month:2026-09`, `year:2026`. */
+  id: string
+  kind: StudentResultPeriodKind
+  label: string
+  year: string
+  /** Sorts newest first when compared descending. */
+  sortKey: string
+  /** How the marks were produced, e.g. "End-of-term examinations". */
+  basis: string
+  rows: StudentResultRow[]
+  average?: number
+  averageGrade?: string
+  classTeacherComment?: string
+}
+
 /** Everything the student portal shows, scoped server-side to the signed-in student. */
 export interface StudentPortalBundle {
   generatedAt: string
+  school: { name: string; motto?: string; address?: string; phone?: string; email?: string }
   profile: StudentPortalProfile
   term: { id: string; name: string; startDate: string; endDate: string } | null
   subjects: StudentPortalSubject[]
   attendance: StudentPortalAttendance
   results: ResultPortalView
+  /** Published results grouped for the results sheet; empty while locked by fees. */
+  resultPeriods: StudentResultPeriod[]
   fees: StudentPortalFees
   exams: StudentPortalExam[]
   announcements: Announcement[]

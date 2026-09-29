@@ -7,18 +7,22 @@ import { getStudentOrThrow } from '@/server/authorization/isolation'
 import { forbidden } from '@/server/errors'
 import { queryCollection } from '@/server/repositories/firestore-repo'
 import { listInvoices, listPayments, resolveBillingTerm } from '@/server/services/finance-service'
+import { getGradingScaleForEducationLevel, gradeFromScore } from '@/server/services/grading-service'
 import { getResultsPortal } from '@/server/services/results-service'
-import { getFeePolicy } from '@/server/services/school-settings-service'
+import { getFeePolicy, getSchoolProfile } from '@/server/services/school-settings-service'
 import type {
   Announcement,
   Assessment,
   AttendanceRecord,
+  ClassTeacherReport,
   ClubActivity,
+  GradingScale,
   Guardian,
   House,
   Mark,
   ResultPortalView,
   SchoolClass,
+  SchoolProfile,
   Sport,
   Staff,
   Stream,
@@ -28,6 +32,8 @@ import type {
   StudentPortalExam,
   StudentPortalFees,
   StudentPortalSubject,
+  StudentResultPeriod,
+  StudentResultRow,
   Subject,
   Term,
 } from '@/types'
@@ -133,58 +139,254 @@ async function loadFees(session: SessionContext, studentId: string): Promise<Stu
   }
 }
 
-async function loadExams(
-  studentId: string,
-  classId: string,
-  streamId: string,
-  results: ResultPortalView,
-): Promise<StudentPortalExam[]> {
+type Academics = {
+  assessments: Assessment[]
+  markByAssessment: Map<string, Mark>
+  subjectName: Map<string, string>
+  terms: Term[]
+}
+
+async function loadAcademics(studentId: string, classId: string, streamId: string): Promise<Academics> {
   const db = getAdminDb()
-  const [byClass, byStream, marksSnap] = await Promise.all([
-    db.collection('assessments').where('classId', '==', classId).limit(300).get(),
+  const [byClass, byStream, marksSnap, terms] = await Promise.all([
+    classId
+      ? db.collection('assessments').where('classId', '==', classId).limit(300).get()
+      : Promise.resolve(null),
     streamId
       ? db.collection('assessments').where('streamId', '==', streamId).limit(300).get()
       : Promise.resolve(null),
     db.collection('marks').where('studentId', '==', studentId).limit(500).get(),
+    queryCollection<Term>('terms', { limit: 100 }),
   ])
   const assessments = new Map<string, Assessment>()
-  for (const doc of [...byClass.docs, ...(byStream?.docs ?? [])]) {
+  for (const doc of [...(byClass?.docs ?? []), ...(byStream?.docs ?? [])]) {
     assessments.set(doc.id, { id: doc.id, ...(doc.data() as Omit<Assessment, 'id'>) })
   }
-  if (assessments.size === 0) return []
-
   const markByAssessment = new Map<string, Mark>()
   for (const doc of marksSnap.docs) {
     const m = doc.data() as Mark
     markByAssessment.set(m.assessmentId, m)
   }
+  const subjects = await getMany<Subject>('subjects', [...assessments.values()].map((a) => a.subjectId))
+  return {
+    assessments: [...assessments.values()],
+    markByAssessment,
+    subjectName: new Map(subjects.map((s) => [s.id, s.name])),
+    terms,
+  }
+}
 
-  const [subjects, terms] = await Promise.all([
-    getMany<Subject>('subjects', [...assessments.values()].map((a) => a.subjectId)),
-    getMany<Term>('terms', [...assessments.values()].map((a) => a.termId)),
-  ])
-  const subjectName = new Map(subjects.map((s) => [s.id, s.name]))
-  const termName = new Map(terms.map((t) => [t.id, t.name]))
-  const canSeeScores = results.accessState === 'RESULTS_AVAILABLE'
+const isReleased = (status: string | undefined) => status === 'PUBLISHED' || status === 'LOCKED'
 
-  return [...assessments.values()]
+function buildExams(ac: Academics, canSeeScores: boolean): StudentPortalExam[] {
+  const termName = new Map(ac.terms.map((t) => [t.id, t.name]))
+  return ac.assessments
     .map((a): StudentPortalExam => {
-      const out = a.status === 'PUBLISHED' || a.status === 'LOCKED'
-      const mark = markByAssessment.get(a.id)
-      const markOut = mark && (mark.status === 'PUBLISHED' || mark.status === 'LOCKED')
+      const out = isReleased(a.status)
+      const mark = ac.markByAssessment.get(a.id)
       return {
         id: a.id,
         name: a.name,
-        subject: subjectName.get(a.subjectId) ?? 'Subject',
+        subject: ac.subjectName.get(a.subjectId) ?? 'Subject',
         type: a.type,
         termName: termName.get(a.termId),
         month: a.month,
         maxScore: a.maxScore,
         status: out ? 'RESULTS_OUT' : 'MARKING',
-        ...(out && markOut && canSeeScores ? { score: mark.score, grade: mark.grade } : {}),
+        ...(out && mark && isReleased(mark.status) && canSeeScores
+          ? { score: mark.score, grade: mark.grade }
+          : {}),
       }
     })
     .sort((a, b) => (b.month ?? '').localeCompare(a.month ?? '') || a.subject.localeCompare(b.subject))
+}
+
+type ResultEntry = {
+  subject: string
+  score: number
+  maxScore: number
+  grade: string
+  comment?: string
+  teacherName?: string
+  at: string
+}
+
+function monthLabel(month: string) {
+  const date = new Date(`${month}-01T12:00:00Z`)
+  return Number.isNaN(date.getTime())
+    ? month
+    : date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
+
+/**
+ * Per-subject rows for a set of marks. Several marks for one subject are averaged
+ * by percentage (each test or term weighs the same) and re-graded on the school scale.
+ */
+function summarize(entries: ResultEntry[], scale: GradingScale) {
+  const bySubject = new Map<string, ResultEntry[]>()
+  for (const e of entries) bySubject.set(e.subject, [...(bySubject.get(e.subject) ?? []), e])
+  const rows: StudentResultRow[] = [...bySubject.entries()]
+    .map(([subject, list]) => {
+      const sorted = [...list].sort((a, b) => a.at.localeCompare(b.at))
+      const percents = sorted.map((e) => (e.score / e.maxScore) * 100)
+      const percent = percents.reduce((s, p) => s + p, 0) / percents.length
+      const single = sorted.length === 1 ? sorted[0] : null
+      return {
+        subject,
+        score: single ? single.score : Math.round(percent * 10) / 10,
+        maxScore: single ? single.maxScore : 100,
+        percent,
+        grade: single ? single.grade : gradeFromScore(percent, 100, scale),
+        teacherName: [...sorted].reverse().find((e) => e.teacherName)?.teacherName,
+        comment: [...sorted].reverse().find((e) => e.comment?.trim())?.comment?.trim(),
+      }
+    })
+    .sort((a, b) => a.subject.localeCompare(b.subject))
+  const average = rows.length ? rows.reduce((s, r) => s + r.percent, 0) / rows.length : undefined
+  return {
+    rows,
+    average,
+    averageGrade: average != null ? gradeFromScore(average, 100, scale) : undefined,
+  }
+}
+
+function buildResultPeriods(
+  ac: Academics,
+  opts: {
+    scale: GradingScale
+    termComments: Map<string, string>
+    teachersFor: (subjectId: string) => string | undefined
+  },
+): StudentResultPeriod[] {
+  const monthOf = (a: Assessment) =>
+    (a.type === 'WEEKLY' ? (a.weekOf ?? a.month) : a.month)?.slice(0, 7)
+  const monthly = new Map<string, ResultEntry[]>()
+  const termly = new Map<string, ResultEntry[]>()
+
+  for (const a of ac.assessments) {
+    if (!isReleased(a.status) || !(a.maxScore > 0)) continue
+    const mark = ac.markByAssessment.get(a.id)
+    if (!mark || !isReleased(mark.status)) continue
+    const entry: ResultEntry = {
+      subject: ac.subjectName.get(a.subjectId) ?? 'Subject',
+      score: mark.score,
+      maxScore: a.maxScore,
+      grade: mark.grade,
+      comment: mark.comment,
+      teacherName: a.enteredByName || opts.teachersFor(a.subjectId),
+      at: mark.recordedAt ?? a.approvedAt ?? a.submittedAt ?? '',
+    }
+    if (a.type === 'TERMLY') {
+      termly.set(a.termId, [...(termly.get(a.termId) ?? []), entry])
+      continue
+    }
+    const month = monthOf(a)
+    if (month && /^\d{4}-\d{2}$/.test(month)) monthly.set(month, [...(monthly.get(month) ?? []), entry])
+  }
+
+  const termById = new Map(ac.terms.map((t) => [t.id, t]))
+  const termForMonth = (month: string) =>
+    ac.terms.find((t) => t.startDate?.slice(0, 7) <= month && month <= (t.endDate?.slice(0, 7) ?? ''))
+  const termYear = (t: Term) => t.startDate?.slice(0, 4) ?? ''
+  const termLabel = (t: Term) => {
+    const year = termYear(t)
+    return year && !t.name.includes(year) ? `${t.name} ${year}` : t.name
+  }
+
+  const periods: StudentResultPeriod[] = []
+
+  for (const [month, entries] of monthly) {
+    periods.push({
+      id: `month:${month}`,
+      kind: 'MONTH',
+      label: monthLabel(month),
+      year: month.slice(0, 4),
+      sortKey: month,
+      basis: 'Monthly tests',
+      classTeacherComment: opts.termComments.get(termForMonth(month)?.id ?? ''),
+      ...summarize(entries, opts.scale),
+    })
+  }
+
+  const termIds = new Set([...termly.keys()])
+  for (const month of monthly.keys()) {
+    const t = termForMonth(month)
+    if (t) termIds.add(t.id)
+  }
+  const termPeriods: StudentResultPeriod[] = []
+  for (const termId of termIds) {
+    const term = termById.get(termId)
+    const exams = termly.get(termId)
+    const entries =
+      exams ??
+      (term
+        ? [...monthly.entries()]
+            .filter(([m]) => termForMonth(m)?.id === termId)
+            .flatMap(([, list]) => list)
+        : [])
+    if (entries.length === 0) continue
+    const year = term ? termYear(term) : (entries[0]?.at.slice(0, 4) ?? '')
+    termPeriods.push({
+      id: `term:${termId}`,
+      kind: 'TERM',
+      label: term ? termLabel(term) : 'Term results',
+      year,
+      sortKey: term?.startDate ?? `${year}-${termId}`,
+      basis: exams ? 'End-of-term examinations' : 'Average of monthly tests',
+      classTeacherComment: opts.termComments.get(termId),
+      ...summarize(entries, opts.scale),
+    })
+  }
+  periods.push(...termPeriods)
+
+  const years = new Set(periods.map((p) => p.year).filter(Boolean))
+  for (const year of years) {
+    const terms = termPeriods
+      .filter((p) => p.year === year)
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    const entries: ResultEntry[] = terms.length
+      ? terms.flatMap((p) =>
+          p.rows.map((r) => ({
+            subject: r.subject,
+            score: r.percent,
+            maxScore: 100,
+            grade: r.grade,
+            comment: r.comment,
+            teacherName: r.teacherName,
+            at: p.sortKey,
+          })),
+        )
+      : [...monthly.entries()].filter(([m]) => m.startsWith(year)).flatMap(([, list]) => list)
+    if (entries.length === 0) continue
+    periods.push({
+      id: `year:${year}`,
+      kind: 'YEAR',
+      label: year,
+      year,
+      sortKey: year,
+      basis: terms.length
+        ? `Average of ${terms.map((t) => t.label.replace(` ${year}`, '')).join(', ')}`
+        : 'Average of monthly tests',
+      classTeacherComment: [...terms].reverse().find((t) => t.classTeacherComment)?.classTeacherComment,
+      ...summarize(entries, opts.scale),
+    })
+  }
+
+  return periods.sort((a, b) => b.sortKey.localeCompare(a.sortKey))
+}
+
+async function loadTermComments(studentId: string) {
+  const snap = await getAdminDb()
+    .collection('classTeacherReports')
+    .where('studentId', '==', studentId)
+    .limit(100)
+    .get()
+  const comments = new Map<string, string>()
+  for (const doc of snap.docs) {
+    const r = doc.data() as ClassTeacherReport
+    if (r.termId && r.comment?.trim()) comments.set(r.termId, r.comment.trim())
+  }
+  return comments
 }
 
 async function loadDocuments(studentId: string): Promise<StudentPortalDocument[]> {
@@ -286,18 +488,56 @@ export async function getStudentPortalBundle(session: SessionContext): Promise<S
     accessState: 'RESULTS_NOT_PUBLISHED',
     subjects: [],
   }
-  const results = await optional(() => getResultsPortal(session, studentId), emptyResults)
+  let resultsLoaded = true
+  const results = await getResultsPortal(session, studentId).catch(() => {
+    resultsLoaded = false
+    return emptyResults
+  })
+  const resultsOpen =
+    resultsLoaded &&
+    results.accessState !== 'RESULTS_LOCKED_FEES' &&
+    results.accessState !== 'ACCOUNT_RESTRICTED'
 
-  const [attendance, fees, exams, announcements, documents] = await Promise.all([
-    optional(() => loadAttendance(studentId, term), summarizeAttendance([], null)),
-    loadFees(session, studentId),
-    optional(() => loadExams(studentId, student.classId, student.streamId, results), []),
-    optional(loadAnnouncements, []),
-    optional(() => loadDocuments(studentId), []),
-  ])
+  const [attendance, fees, academics, termComments, scale, school, announcements, documents] =
+    await Promise.all([
+      optional(() => loadAttendance(studentId, term), summarizeAttendance([], null)),
+      loadFees(session, studentId),
+      optional<Academics | null>(
+        () => loadAcademics(studentId, student.classId, student.streamId),
+        null,
+      ),
+      resultsOpen
+        ? optional(() => loadTermComments(studentId), new Map<string, string>())
+        : new Map<string, string>(),
+      optional<GradingScale | null>(() => getGradingScaleForEducationLevel(levelId), null),
+      optional<SchoolProfile | null>(getSchoolProfile, null),
+      optional(loadAnnouncements, []),
+      optional(() => loadDocuments(studentId), []),
+    ])
+
+  const teachersFor = (subjectId: string) =>
+    classStaff
+      .filter((st) => st.subjectIds?.includes(subjectId))
+      .map(staffName)
+      .join(', ') || undefined
+  let resultPeriods: StudentResultPeriod[] = []
+  if (resultsOpen && academics && scale) {
+    try {
+      resultPeriods = buildResultPeriods(academics, { scale, termComments, teachersFor })
+    } catch {
+      resultPeriods = []
+    }
+  }
 
   return {
     generatedAt: new Date().toISOString(),
+    school: {
+      name: school?.name || 'Viste High School',
+      motto: school?.motto,
+      address: school?.address || undefined,
+      phone: school?.phone || undefined,
+      email: school?.email || undefined,
+    },
     profile: {
       id: student.id,
       studentNumber: student.studentNumber,
@@ -333,8 +573,9 @@ export async function getStudentPortalBundle(session: SessionContext): Promise<S
     subjects,
     attendance,
     results,
+    resultPeriods,
     fees,
-    exams,
+    exams: academics ? buildExams(academics, resultsOpen) : [],
     announcements,
     documents,
     activities: {

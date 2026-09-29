@@ -24,13 +24,13 @@ import {
 import { Alert } from '@/components/shared/alert'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ResolvedAvatar } from '@/components/shared/resolved-avatar'
+import { SchoolLogo } from '@/components/shared/school-logo'
 import { StatCard } from '@/components/shared/stat-card'
 import {
   ATTENDANCE_LABEL,
   AttendanceBadge,
   PortalPage,
   ProgressBar,
-  averageScore,
   latestResults,
   money,
   percent,
@@ -40,17 +40,19 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select } from '@/components/ui/select'
 import { useAuth } from '@/contexts/auth-context'
 import { notify } from '@/lib/notify'
+import { downloadResultSheetPdf, formatMark, formatPercent } from '@/lib/result-sheet-pdf'
 import { cn } from '@/lib/utils'
 import { fileService } from '@/services/files'
 import type {
   AttendanceStatus,
   Invoice,
-  ResultPortalView,
   StudentPortalBundle,
   StudentPortalDocument,
+  StudentResultPeriod,
+  StudentResultPeriodKind,
 } from '@/types'
 
 const ASSESSMENT_TYPE_LABEL: Record<string, string> = {
@@ -226,50 +228,125 @@ export function MyProfilePage() {
 
 /* ---------- Results ---------- */
 
-function ResultBlock({
-  label,
-  average,
-  rows,
-}: {
-  label: string
-  average?: number
-  rows: { subject: string; score: number; maxScore: number; grade: string; comment?: string }[]
-}) {
+const PERIOD_KINDS: { kind: StudentResultPeriodKind; label: string; picker: string }[] = [
+  { kind: 'TERM', label: 'Term', picker: 'Select term' },
+  { kind: 'MONTH', label: 'Month', picker: 'Select month' },
+  { kind: 'YEAR', label: 'Year', picker: 'Select year' },
+]
+
+function ResultSheet({ data, period }: { data: StudentPortalBundle; period: StudentResultPeriod }) {
+  const { profile, school } = data
+  const best = [...period.rows].sort((a, b) => b.percent - a.percent)[0]
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0 border-b border-border/70 bg-muted/30 py-3 sm:py-3">
-        <CardTitle className="text-base">{label}</CardTitle>
-        {average != null ? <Badge variant={scoreTone(average)}>Average {percent(average, 1)}</Badge> : null}
-      </CardHeader>
-      <CardContent className="p-0 sm:p-0">
-        <ul className="divide-y divide-border">
-          {rows.map((r) => {
-            const pct = r.maxScore > 0 ? (r.score / r.maxScore) * 100 : r.score
-            return (
-              <li key={`${label}-${r.subject}`} className="space-y-1.5 px-4 py-3 sm:px-5">
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium">{r.subject}</span>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatCard label="Average" value={formatPercent(period.average)} icon={Award} tone="success" />
+        <StatCard label="Overall grade" value={period.averageGrade ?? '—'} icon={Trophy} tone="accent" />
+        <StatCard label="Subjects" value={String(period.rows.length)} icon={BookOpen} />
+        <StatCard label="Best subject" value={best?.subject ?? '—'} hint={best ? formatPercent(best.percent) : undefined} icon={Award} tone="success" />
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="flex items-center gap-3 border-b border-border/70 bg-muted/30 px-4 py-4 sm:px-5">
+          <SchoolLogo size="lg" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-display text-lg font-semibold leading-tight">{school.name}</p>
+            <p className="text-xs text-muted-foreground">
+              Results sheet · {period.label} · {period.basis}
+            </p>
+          </div>
+        </div>
+        <CardContent className="space-y-4 pt-4 sm:pt-5">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl border border-border bg-muted/20 p-3 text-sm sm:grid-cols-4">
+            {[
+              ['Student', [profile.firstName, profile.middleName, profile.lastName].filter(Boolean).join(' ')],
+              ['Reg. number', profile.studentNumber],
+              ['Class', [profile.className, profile.streamName].filter(Boolean).join(' ')],
+              [PERIOD_KINDS.find((k) => k.kind === period.kind)?.label ?? 'Period', period.label],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0">
+                <dt className="text-xs text-muted-foreground">{label}</dt>
+                <dd className="truncate font-medium">{value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <ul className="divide-y divide-border rounded-xl border border-border">
+            {period.rows.map((r) => (
+              <li key={r.subject} className="space-y-1.5 px-4 py-3">
+                <div className="flex items-start justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium">{r.subject}</p>
+                    {r.teacherName ? <p className="text-xs text-muted-foreground">{r.teacherName}</p> : null}
+                  </div>
                   <span className="flex shrink-0 items-center gap-2">
-                    <span className="tabular-nums text-muted-foreground">
-                      {r.score}/{r.maxScore}
+                    <span className="hidden tabular-nums text-muted-foreground sm:inline">
+                      {formatMark(r.score, r.maxScore)}
                     </span>
-                    <Badge variant={scoreTone(pct)} className="min-w-8 justify-center">
+                    <span className="w-12 text-right font-medium tabular-nums">{formatPercent(r.percent)}</span>
+                    <Badge variant={scoreTone(r.percent)} className="min-w-8 justify-center">
                       {r.grade}
                     </Badge>
                   </span>
                 </div>
-                <ProgressBar value={pct} tone={scoreTone(pct)} />
+                <ProgressBar value={r.percent} tone={scoreTone(r.percent)} />
                 {r.comment ? <p className="text-xs italic text-muted-foreground">“{r.comment}”</p> : null}
               </li>
-            )
-          })}
-        </ul>
-      </CardContent>
-    </Card>
+            ))}
+            <li className="flex items-center justify-between bg-muted/30 px-4 py-2.5 text-sm font-semibold">
+              <span>Average</span>
+              <span className="flex items-center gap-2">
+                <span className="tabular-nums">{formatPercent(period.average)}</span>
+                {period.averageGrade ? (
+                  <Badge variant={scoreTone(period.average ?? 0)} className="min-w-8 justify-center">
+                    {period.averageGrade}
+                  </Badge>
+                ) : null}
+              </span>
+            </li>
+          </ul>
+
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+            <p className="text-sm font-medium">Class teacher's comment</p>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+              {period.classTeacherComment ?? 'No comment recorded yet.'}
+            </p>
+            {period.classTeacherComment && profile.classTeacherName ? (
+              <p className="mt-1.5 text-xs text-muted-foreground">— {profile.classTeacherName}</p>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
 
-function ResultsBody({ results }: { results: ResultPortalView }) {
+function ResultsBody({ data }: { data: StudentPortalBundle }) {
+  const { results, resultPeriods } = data
+  const available = PERIOD_KINDS.filter((k) => resultPeriods.some((p) => p.kind === k.kind))
+  const [kind, setKind] = useState<StudentResultPeriodKind>(available[0]?.kind ?? 'TERM')
+  const options = resultPeriods.filter((p) => p.kind === kind)
+  const [selectedId, setSelectedId] = useState<string>(options[0]?.id ?? '')
+  const period = options.find((p) => p.id === selectedId) ?? options[0]
+  const [downloading, setDownloading] = useState(false)
+
+  function changeKind(next: StudentResultPeriodKind) {
+    setKind(next)
+    setSelectedId(resultPeriods.find((p) => p.kind === next)?.id ?? '')
+  }
+
+  async function download() {
+    if (!period) return
+    setDownloading(true)
+    try {
+      await downloadResultSheetPdf(data, period)
+    } catch (err) {
+      notify.error('Could not create the results sheet', err instanceof Error ? err.message : undefined)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   if (results.accessState === 'RESULTS_LOCKED_FEES') {
     return (
       <EmptyState
@@ -279,7 +356,7 @@ function ResultsBody({ results }: { results: ResultPortalView }) {
       />
     )
   }
-  if (results.accessState !== 'RESULTS_AVAILABLE') {
+  if (!period) {
     return (
       <EmptyState
         icon={Trophy}
@@ -288,62 +365,62 @@ function ResultsBody({ results }: { results: ResultPortalView }) {
       />
     )
   }
-  const latest = latestResults(results)
-  const monthly = results.monthly ?? []
-  const termly = results.termly ?? []
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <StatCard label="Overall average" value={percent(averageScore(results), 1)} icon={Award} tone="success" />
-        <StatCard label="Latest average" value={percent(latest?.average, 1)} hint={latest?.label} icon={Trophy} tone="accent" />
-        <StatCard label="Subjects graded" value={String(latest?.rows.length ?? 0)} icon={BookOpen} />
-      </div>
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-4">
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">View results by</p>
+            <div className="inline-flex rounded-lg bg-muted p-1" role="tablist" aria-label="Results period">
+              {PERIOD_KINDS.map((k) => {
+                const enabled = available.some((a) => a.kind === k.kind)
+                return (
+                  <button
+                    key={k.kind}
+                    type="button"
+                    role="tab"
+                    aria-selected={kind === k.kind}
+                    disabled={!enabled}
+                    onClick={() => changeKind(k.kind)}
+                    className={cn(
+                      'rounded-md px-4 py-1.5 text-sm font-medium text-muted-foreground transition-all disabled:cursor-not-allowed disabled:opacity-40',
+                      kind === k.kind && 'bg-card text-foreground shadow-sm',
+                    )}
+                  >
+                    {k.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
+            <p className="text-xs font-medium text-muted-foreground">
+              {PERIOD_KINDS.find((k) => k.kind === kind)?.picker}
+            </p>
+            <Select value={period.id} onChange={(e) => setSelectedId(e.target.value)} aria-label="Results period">
+              {options.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button className="sm:ml-auto" loading={downloading} onClick={() => void download()}>
+            <Download className="h-4 w-4" /> Download results sheet
+          </Button>
+        </CardContent>
+      </Card>
 
-      {results.teacherComment ? (
-        <Alert title="Class teacher's comment" tone="info">
-          <span className="whitespace-pre-wrap">{results.teacherComment}</span>
-        </Alert>
-      ) : null}
-
-      <Tabs defaultValue={monthly.length ? 'monthly' : termly.length ? 'termly' : 'latest'}>
-        <TabsList>
-          <TabsTrigger value="monthly">Monthly tests</TabsTrigger>
-          <TabsTrigger value="termly">End of term</TabsTrigger>
-          <TabsTrigger value="latest">All subjects</TabsTrigger>
-        </TabsList>
-        <TabsContent value="monthly" className="space-y-4">
-          {monthly.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No monthly test results released yet.</p>
-          ) : (
-            monthly.map((b) => <ResultBlock key={b.month} label={b.label} average={b.average} rows={b.rows} />)
-          )}
-        </TabsContent>
-        <TabsContent value="termly" className="space-y-4">
-          {termly.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No end-of-term results released yet.</p>
-          ) : (
-            termly.map((b) => <ResultBlock key={b.termId} label={b.termName} average={b.average} rows={b.rows} />)
-          )}
-        </TabsContent>
-        <TabsContent value="latest">
-          {results.subjects.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No published subjects yet.</p>
-          ) : (
-            <ResultBlock
-              label="Published subjects"
-              rows={results.subjects.map((s) => ({ subject: s.name, score: s.score, maxScore: 100, grade: s.grade, comment: s.comment }))}
-            />
-          )}
-        </TabsContent>
-      </Tabs>
+      <ResultSheet data={data} period={period} />
     </div>
   )
 }
 
 export function MyResultsPage() {
   return (
-    <PortalPage title="Results" description="Monthly progress, end-of-term results and teacher comments.">
-      {(data) => <ResultsBody results={data.results} />}
+    <PortalPage title="Results" description="Choose a term, month or year and download your official results sheet.">
+      {(data) => <ResultsBody data={data} />}
     </PortalPage>
   )
 }
