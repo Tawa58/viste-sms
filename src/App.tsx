@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { AppShell } from '@/layouts/app-shell'
 import { AppToaster } from '@/components/shared/app-toaster'
 import { WelcomeSplash } from '@/components/shared/welcome-splash'
+import { STUDENT_PATH_REDIRECTS } from '@/lib/navigation'
 import { canAccessPath } from '@/lib/roles'
 
 function isChunkLoadError(err: unknown) {
@@ -97,6 +98,22 @@ const StaffAttendancePage = lazyPage(
   () => import('@/views/staff-attendance-page'),
   'StaffAttendancePage',
 )
+const StudentDashboardPage = lazyPage(
+  () => import('@/views/student-portal/dashboard'),
+  'StudentDashboardPage',
+)
+const studentPortalPage = (name: string) =>
+  lazyPage(() => import('@/views/student-portal/pages'), name)
+const MyProfilePage = studentPortalPage('MyProfilePage')
+const MyResultsPage = studentPortalPage('MyResultsPage')
+const MyAttendancePage = studentPortalPage('MyAttendancePage')
+const MyTimetablePage = studentPortalPage('MyTimetablePage')
+const MySubjectsPage = studentPortalPage('MySubjectsPage')
+const MyFeesPage = studentPortalPage('MyFeesPage')
+const MyExamsPage = studentPortalPage('MyExamsPage')
+const MyAnnouncementsPage = studentPortalPage('MyAnnouncementsPage')
+const MyDocumentsPage = studentPortalPage('MyDocumentsPage')
+const MyActivitiesPage = studentPortalPage('MyActivitiesPage')
 
 function RouteFallback() {
   return <WelcomeSplash />
@@ -115,10 +132,26 @@ function RoleRoute() {
   const { user, permissions } = useAuth()
   const location = useLocation()
   if (!user) return <Navigate to="/login" replace />
+  if (user.role === 'STUDENT') {
+    const portalPath = STUDENT_PATH_REDIRECTS[location.pathname.replace(/\/+$/, '')]
+    if (portalPath) return <Navigate to={portalPath} replace />
+  }
   if (!canAccessPath(user.role, location.pathname, permissions)) {
     return <Navigate to="/dashboard" replace />
   }
   return <Outlet />
+}
+
+/** `/my/*` is the signed-in student's own portal; staff land on their dashboard. */
+function StudentOnlyRoute() {
+  const { user } = useAuth()
+  if (user?.role !== 'STUDENT') return <Navigate to="/dashboard" replace />
+  return <Outlet />
+}
+
+function DashboardRoute() {
+  const { user } = useAuth()
+  return user?.role === 'STUDENT' ? <StudentDashboardPage /> : <DashboardPage />
 }
 
 export default function App() {
@@ -131,7 +164,20 @@ export default function App() {
             <Route element={<AppShell />}>
               <Route element={<RoleRoute />}>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/dashboard" element={<DashboardRoute />} />
+                <Route path="/my" element={<StudentOnlyRoute />}>
+                  <Route index element={<Navigate to="/dashboard" replace />} />
+                  <Route path="profile" element={<MyProfilePage />} />
+                  <Route path="results" element={<MyResultsPage />} />
+                  <Route path="attendance" element={<MyAttendancePage />} />
+                  <Route path="timetable" element={<MyTimetablePage />} />
+                  <Route path="subjects" element={<MySubjectsPage />} />
+                  <Route path="fees" element={<MyFeesPage />} />
+                  <Route path="exams" element={<MyExamsPage />} />
+                  <Route path="announcements" element={<MyAnnouncementsPage />} />
+                  <Route path="documents" element={<MyDocumentsPage />} />
+                  <Route path="activities" element={<MyActivitiesPage />} />
+                </Route>
                 <Route path="/check-in" element={<CheckInPage />} />
                 <Route path="/staff-attendance" element={<StaffAttendancePage />} />
                 <Route path="/students" element={<StudentsPage />} />

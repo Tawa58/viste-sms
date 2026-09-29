@@ -137,14 +137,7 @@ export const ROLE_ROUTES: Record<UserRole, '*' | string[]> = {
     '/announcements',
     '/settings',
   ],
-  STUDENT: [
-    '/dashboard',
-    '/attendance',
-    '/results',
-    '/fees',
-    '/announcements',
-    '/settings',
-  ],
+  STUDENT: ['/dashboard', '/my', '/settings'],
 }
 
 export function isStaffRole(role: UserRole) {

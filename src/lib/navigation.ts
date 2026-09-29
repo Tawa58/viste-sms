@@ -21,6 +21,8 @@ import {
   Puzzle,
   MapPinCheck,
   UserCheck,
+  CalendarClock,
+  FileText,
   type LucideIcon,
 } from 'lucide-react'
 import { canAccessPath } from '@/lib/roles'
@@ -118,10 +120,47 @@ export const navGroups: NavGroup[] = [
   },
 ]
 
+/** Student portal sidebar — students never see the staff console groups. */
+export const studentNavGroups: NavGroup[] = [
+  {
+    label: 'My school',
+    items: [
+      { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+      { label: 'My Profile', to: '/my/profile', icon: UserRound },
+      { label: 'Results', to: '/my/results', icon: Trophy },
+      { label: 'Attendance', to: '/my/attendance', icon: CalendarCheck },
+      { label: 'Timetable', to: '/my/timetable', icon: CalendarClock },
+      { label: 'Subjects', to: '/my/subjects', icon: BookOpen },
+      { label: 'Fees', to: '/my/fees', icon: Wallet },
+      { label: 'Exams', to: '/my/exams', icon: ClipboardList },
+      { label: 'Announcements', to: '/my/announcements', icon: Megaphone },
+      { label: 'Documents', to: '/my/documents', icon: FileText },
+      { label: 'Activities', to: '/my/activities', icon: Puzzle },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [{ label: 'Settings', to: '/settings', icon: Settings }],
+  },
+]
+
+/** Staff console paths a student may bookmark, mapped to their portal equivalents. */
+export const STUDENT_PATH_REDIRECTS: Record<string, string> = {
+  '/results': '/my/results',
+  '/attendance': '/my/attendance',
+  '/fees': '/my/fees',
+  '/announcements': '/my/announcements',
+  '/subjects': '/my/subjects',
+  '/examinations': '/my/exams',
+  '/sports': '/my/activities',
+  '/clubs': '/my/activities',
+}
+
 export function getNavGroupsForRole(
   role: UserRole,
   permissions?: readonly string[] | null,
 ): NavGroup[] {
+  if (role === 'STUDENT') return studentNavGroups
   return navGroups
     .map((group) => ({
       ...group,
@@ -134,5 +173,6 @@ export function getMainNavForRole(
   role: UserRole,
   permissions?: readonly string[] | null,
 ): NavItem[] {
+  if (role === 'STUDENT') return studentNavGroups.flatMap((group) => group.items)
   return mainNav.filter((item) => canAccessPath(role, item.to, permissions))
 }

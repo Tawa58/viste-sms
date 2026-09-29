@@ -1054,3 +1054,114 @@ export interface DutyRoster {
   updatedBy: string
   updatedByName?: string
 }
+
+/* ---------- Student portal ---------- */
+
+export interface StudentPortalProfile {
+  id: string
+  studentNumber: string
+  admissionNumber: string
+  firstName: string
+  middleName?: string
+  lastName: string
+  dateOfBirth: string
+  gender: Student['gender']
+  email?: string
+  phone?: string
+  address: string
+  admissionDate: string
+  status: StudentStatus
+  residency: StudentResidency
+  profilePhotoId?: string
+  /** e.g. "Form 6 A". */
+  className: string
+  levelName?: string
+  /** Only when it differs from the class name. */
+  streamName?: string
+  classTeacherName?: string
+  houseName?: string
+  guardians: {
+    name: string
+    relationship: string
+    phone: string
+    email: string
+    emergencyContact?: boolean
+  }[]
+}
+
+export interface StudentPortalSubject {
+  id: string
+  code: string
+  name: string
+  category: string
+  teachers: string[]
+}
+
+export interface StudentPortalAttendance {
+  /** Daily register marks, newest first. */
+  records: { date: string; status: AttendanceStatus }[]
+  present: number
+  late: number
+  absent: number
+  excused: number
+  /** Present + late as a share of marked days, or null before any register. */
+  rate: number | null
+}
+
+export interface StudentPortalFees {
+  currency: string
+  invoices: Invoice[]
+  payments: Payment[]
+  billed: number
+  paid: number
+  balance: number
+  cleared: boolean
+  /** Earliest due date among invoices with a balance. */
+  nextDueDate?: string
+}
+
+export type StudentPortalExamStatus = 'MARKING' | 'RESULTS_OUT'
+
+export interface StudentPortalExam {
+  id: string
+  name: string
+  subject: string
+  type: string
+  termName?: string
+  month?: string
+  maxScore: number
+  status: StudentPortalExamStatus
+  /** Present only when results are out and not locked by fees. */
+  score?: number
+  grade?: string
+}
+
+export interface StudentPortalDocument {
+  id: string
+  fileName: string
+  mimeType: string
+  fileType: string
+  sizeBytes: number
+  uploadedAt: string
+}
+
+export interface StudentPortalActivities {
+  sports: { id: string; name: string; description?: string; coachName?: string }[]
+  clubs: { id: string; name: string; type: ClubActivityType; description?: string }[]
+  house?: { name: string; color?: string }
+}
+
+/** Everything the student portal shows, scoped server-side to the signed-in student. */
+export interface StudentPortalBundle {
+  generatedAt: string
+  profile: StudentPortalProfile
+  term: { id: string; name: string; startDate: string; endDate: string } | null
+  subjects: StudentPortalSubject[]
+  attendance: StudentPortalAttendance
+  results: ResultPortalView
+  fees: StudentPortalFees
+  exams: StudentPortalExam[]
+  announcements: Announcement[]
+  documents: StudentPortalDocument[]
+  activities: StudentPortalActivities
+}

@@ -31,7 +31,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { StudentNotificationsBell } from '@/components/student-portal/student-notifications'
 import { useAuth } from '@/contexts/auth-context'
+import { StudentPortalProvider } from '@/contexts/student-portal-context'
 import { getMainNavForRole, getNavGroupsForRole, type NavGroup } from '@/lib/navigation'
 import { canAccessPath } from '@/lib/roles'
 import { catalogService } from '@/services/api'
@@ -47,7 +49,15 @@ function isAdminNotificationsRole(role: string | undefined) {
   )
 }
 
-function SidebarNav({ collapsed, groups }: { collapsed: boolean; groups: NavGroup[] }) {
+function SidebarNav({
+  collapsed,
+  groups,
+  onLogout,
+}: {
+  collapsed: boolean
+  groups: NavGroup[]
+  onLogout?: () => void
+}) {
   return (
     <nav className="flex-1 space-y-5 overflow-y-auto px-2 pb-4">
       {groups.map((group) => (
@@ -94,6 +104,20 @@ function SidebarNav({ collapsed, groups }: { collapsed: boolean; groups: NavGrou
                 </NavLink>
               )
             })}
+            {onLogout && group === groups[groups.length - 1] ? (
+              <button
+                type="button"
+                onClick={onLogout}
+                title="Log out"
+                className={cn(
+                  'group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-black transition-colors duration-150 hover:bg-sidebar-accent dark:text-sidebar-foreground',
+                  collapsed && 'justify-center px-2',
+                )}
+              >
+                <LogOut className="h-4 w-4 shrink-0 text-accent transition-colors group-hover:text-destructive" />
+                {!collapsed && <span className="truncate">Log out</span>}
+              </button>
+            ) : null}
           </div>
         </div>
       ))}
@@ -111,6 +135,7 @@ export function AppShell() {
   const installApp = useInstallApp()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const canSeeAdminNotifications = isAdminNotificationsRole(user?.role)
+  const isStudent = user?.role === 'STUDENT'
   const unreadCount = notifications.filter((n) => !n.read).length
 
   const roleNav = useMemo(
@@ -225,14 +250,16 @@ export function AppShell() {
 
   const searchLinks = useMemo(
     () =>
-      [
+      isStudent
+        ? roleMainNav.map((item) => ({ label: item.label, to: item.to }))
+        : [
         { label: 'Students', to: '/students' },
         { label: 'Teachers & Staff', to: '/teachers' },
         { label: 'Fees & Payments', to: '/fees' },
         { label: 'Attendance', to: '/attendance' },
         { label: 'Results', to: '/results' },
       ].filter((link) => (user ? canAccessPath(user.role, link.to, permissions) : false)),
-    [user, permissions],
+    [user, permissions, isStudent, roleMainNav],
   )
 
   async function handleLogout() {
@@ -245,6 +272,7 @@ export function AppShell() {
   }
 
   return (
+    <StudentPortalProvider enabled={isStudent}>
     <div className="min-h-screen bg-background">
       <aside
         className={cn(
@@ -264,7 +292,11 @@ export function AppShell() {
             {collapsed ? <ChevronRight /> : <ChevronLeft />}
           </Button>
         </div>
-        <SidebarNav collapsed={collapsed} groups={roleNav} />
+        <SidebarNav
+          collapsed={collapsed}
+          groups={roleNav}
+          onLogout={isStudent ? () => setLogoutOpen(true) : undefined}
+        />
         <div className="mt-auto border-t border-sidebar-border p-3">
           <div
             className={cn(
@@ -347,7 +379,18 @@ export function AppShell() {
                   </Button>
                 </div>
               </div>
-              <SidebarNav collapsed={false} groups={roleNav} />
+              <SidebarNav
+                collapsed={false}
+                groups={roleNav}
+                onLogout={
+                  isStudent
+                    ? () => {
+                        setMobileOpen(false)
+                        setLogoutOpen(true)
+                      }
+                    : undefined
+                }
+              />
               <div className="border-t border-sidebar-border p-3">
                 <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card p-2.5 shadow-card">
                   <div className="min-w-0 flex-1">
@@ -431,6 +474,9 @@ export function AppShell() {
                 <ThemeToggle />
               </span>
 
+              {isStudent ? (
+                <StudentNotificationsBell />
+              ) : (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -494,6 +540,7 @@ export function AppShell() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              )}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -527,7 +574,9 @@ export function AppShell() {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate('/settings?tab=profile')}>
+                  <DropdownMenuItem
+                    onClick={() => navigate(isStudent ? '/my/profile' : '/settings?tab=profile')}
+                  >
                     <UserRound className="h-4 w-4" /> My profile
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate('/settings')}>
@@ -574,5 +623,6 @@ export function AppShell() {
         }}
       />
     </div>
+    </StudentPortalProvider>
   )
 }
