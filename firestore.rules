@@ -16,7 +16,10 @@ service cloud.firestore {
         && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
 
-    // Default deny — Admin SDK bypasses rules
+    // Default deny — Admin SDK bypasses rules.
+    // HR, payroll and finance collections (hr_staff, salary_scales, payroll, payroll_items,
+    // deductions, expenses, expense_categories, revenues, attendance_deductions, payslips)
+    // are server-only: /api/v1/hr|payroll|finance enforce hr.*, payroll.* and finance.* permissions.
     match /{document=**} {
       allow read, write: if false;
     }

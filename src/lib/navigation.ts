@@ -23,6 +23,13 @@ import {
   UserCheck,
   CalendarClock,
   FileText,
+  IdCard,
+  Layers,
+  WalletCards,
+  BadgeMinus,
+  ChartColumn,
+  Receipt,
+  HandCoins,
   type LucideIcon,
 } from 'lucide-react'
 import { canAccessPath } from '@/lib/roles'
@@ -53,6 +60,13 @@ export const mainNav: NavItem[] = [
   { label: 'Examinations', to: '/examinations', icon: ClipboardList },
   { label: 'Results', to: '/results', icon: Trophy },
   { label: 'Fees & Payments', to: '/fees', icon: Wallet },
+  { label: 'Financial dashboard', to: '/finance', icon: ChartColumn },
+  { label: 'Expenses', to: '/expenses', icon: Receipt },
+  { label: 'Revenue', to: '/revenue', icon: HandCoins },
+  { label: 'Staff records', to: '/hr', icon: IdCard },
+  { label: 'Salary scales', to: '/hr/salary-scales', icon: Layers },
+  { label: 'Payroll', to: '/payroll', icon: WalletCards },
+  { label: 'Deductions', to: '/payroll/deductions', icon: BadgeMinus },
   { label: 'Parents/Guardians', to: '/parents', icon: UserRound },
   { label: 'Reports', to: '/reports', icon: FileBarChart },
   { label: 'Announcements', to: '/announcements', icon: Megaphone },
@@ -98,7 +112,21 @@ export const navGroups: NavGroup[] = [
   },
   {
     label: 'Finance',
-    items: [{ label: 'Fees & Payments', to: '/fees', icon: Wallet }],
+    items: [
+      { label: 'Financial dashboard', to: '/finance', icon: ChartColumn },
+      { label: 'Fees & Payments', to: '/fees', icon: Wallet },
+      { label: 'Expenses', to: '/expenses', icon: Receipt },
+      { label: 'Revenue', to: '/revenue', icon: HandCoins },
+    ],
+  },
+  {
+    label: 'HR & Payroll',
+    items: [
+      { label: 'Staff records', to: '/hr', icon: IdCard },
+      { label: 'Salary scales', to: '/hr/salary-scales', icon: Layers },
+      { label: 'Payroll', to: '/payroll', icon: WalletCards },
+      { label: 'Deductions', to: '/payroll/deductions', icon: BadgeMinus },
+    ],
   },
   {
     label: 'Operations',

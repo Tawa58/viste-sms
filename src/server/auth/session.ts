@@ -32,6 +32,8 @@ const ALL_ROLES: UserRole[] = [
   'RECEPTIONIST',
   'LIBRARIAN',
   'TRANSPORT_MANAGER',
+  'HR_ADMIN',
+  'FINANCE_VIEWER',
   'PARENT',
   'STUDENT',
 ]

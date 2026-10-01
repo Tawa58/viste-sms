@@ -11,6 +11,8 @@ export type UserRole =
   | 'PARENT'
   | 'LIBRARIAN'
   | 'TRANSPORT_MANAGER'
+  | 'HR_ADMIN'
+  | 'FINANCE_VIEWER'
 
 export type StudentStatus =
   | 'ACTIVE'
@@ -1197,3 +1199,5 @@ export interface StudentPortalBundle {
   documents: StudentPortalDocument[]
   activities: StudentPortalActivities
 }
+
+export * from './hr'

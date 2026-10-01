@@ -1,10 +1,8 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { isAndroidApp, saveBlobInApp } from '@/lib/native-app'
+import { loadPdfLogo as loadLogo, PDF_BRAND as BRAND } from '@/lib/pdf-brand'
 import type { StudentPortalBundle, StudentResultPeriod } from '@/types'
-
-const BRAND: [number, number, number] = [19, 74, 102]
-const LOGO_URL = '/viste-logo.png'
 
 const PERIOD_LABEL: Record<StudentResultPeriod['kind'], string> = {
   TERM: 'Term',
@@ -20,38 +18,6 @@ export function formatPercent(value: number | undefined) {
 export function formatMark(score: number, maxScore: number) {
   const s = Number.isInteger(score) ? score : score.toFixed(1)
   return `${s}/${maxScore}`
-}
-
-async function loadLogo(): Promise<{ data: string; ratio: number } | null> {
-  try {
-    const res = await fetch(LOGO_URL)
-    if (!res.ok) return null
-    const blob = await res.blob()
-    const data = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(blob)
-    })
-    const img = await new Promise<HTMLImageElement | null>((resolve) => {
-      const el = new Image()
-      el.onload = () => resolve(el)
-      el.onerror = () => resolve(null)
-      el.src = data
-    })
-    if (!img) return { data, ratio: 1 }
-    const ratio = img.naturalWidth / Math.max(1, img.naturalHeight)
-    const scale = Math.min(1, 320 / Math.max(img.naturalWidth, img.naturalHeight))
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
-    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return { data, ratio }
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-    return { data: canvas.toDataURL('image/png'), ratio }
-  } catch {
-    return null
-  }
 }
 
 /** Builds the official results sheet for one term, month or year and downloads it. */

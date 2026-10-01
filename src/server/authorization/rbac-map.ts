@@ -41,6 +41,13 @@ export const PERMISSIONS = [
   'audit.read',
   'checkin.self',
   'checkin.manage',
+  'hr.read',
+  'hr.manage',
+  'payroll.read',
+  'payroll.manage',
+  'payroll.approve',
+  'finance.read',
+  'finance.manage',
 ] as const
 
 export type Permission = (typeof PERMISSIONS)[number]
@@ -57,6 +64,25 @@ const FINANCE: Permission[] = [
   'payments.create',
   'payments.reverse',
   'checkin.self',
+]
+
+/** Finance administrators run payroll and keep the expense / revenue books. */
+const FINANCE_ADMIN: Permission[] = [
+  ...FINANCE,
+  'hr.read',
+  'payroll.read',
+  'payroll.manage',
+  'payroll.approve',
+  'finance.read',
+  'finance.manage',
+]
+
+/** Principals see HR, payroll and the books but only the finance/HR roles change them. */
+const HR_FINANCE_MANAGE: Permission[] = [
+  'hr.manage',
+  'payroll.manage',
+  'payroll.approve',
+  'finance.manage',
 ]
 
 const TEACHER: Permission[] = [
@@ -94,10 +120,12 @@ const STUDENT: Permission[] = [
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   SUPER_ADMIN: ALL,
   SCHOOL_ADMIN: ALL,
-  PRINCIPAL: ALL.filter((p) => p !== 'roles.manage'),
+  PRINCIPAL: ALL.filter((p) => p !== 'roles.manage' && !HR_FINANCE_MANAGE.includes(p)),
   TEACHER,
-  ACCOUNTANT: FINANCE,
-  FINANCE_OFFICER: FINANCE,
+  ACCOUNTANT: FINANCE_ADMIN,
+  FINANCE_OFFICER: FINANCE_ADMIN,
+  HR_ADMIN: ['hr.read', 'hr.manage', 'checkin.self'],
+  FINANCE_VIEWER: ['finance.read', 'checkin.self'],
   REGISTRAR: [
     'students.read',
     'students.create',
@@ -236,6 +264,11 @@ export const PATH_PERMISSION: Record<string, Permission | null> = {
   '/transport': 'students.read',
   '/check-in': 'checkin.self',
   '/staff-attendance': 'checkin.manage',
+  '/hr': 'hr.read',
+  '/payroll': 'payroll.read',
+  '/finance': 'finance.read',
+  '/expenses': 'finance.manage',
+  '/revenue': 'finance.manage',
 }
 
 export function isPermission(value: string): value is Permission {

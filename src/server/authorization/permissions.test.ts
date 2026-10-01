@@ -38,6 +38,21 @@ describe('RBAC permissions', () => {
     expect(effective).not.toContain('attendance.create')
   })
 
+  it('splits HR, payroll and finance duties by role', () => {
+    expect(hasPermission('HR_ADMIN', 'hr.manage')).toBe(true)
+    expect(hasPermission('HR_ADMIN', 'payroll.read')).toBe(false)
+    expect(hasPermission('FINANCE_OFFICER', 'payroll.manage')).toBe(true)
+    expect(hasPermission('ACCOUNTANT', 'finance.manage')).toBe(true)
+    expect(hasPermission('FINANCE_OFFICER', 'hr.manage')).toBe(false)
+    expect(hasPermission('FINANCE_VIEWER', 'finance.read')).toBe(true)
+    expect(hasPermission('FINANCE_VIEWER', 'finance.manage')).toBe(false)
+    expect(hasPermission('FINANCE_VIEWER', 'payroll.read')).toBe(false)
+    expect(hasPermission('PRINCIPAL', 'payroll.read')).toBe(true)
+    expect(hasPermission('PRINCIPAL', 'payroll.manage')).toBe(false)
+    expect(hasPermission('SUPER_ADMIN', 'payroll.approve')).toBe(true)
+    expect(hasPermission('TEACHER', 'hr.read')).toBe(false)
+  })
+
   it('every role has a permission list', () => {
     for (const role of Object.keys(ROLE_PERMISSIONS)) {
       expect(ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS].length).toBeGreaterThan(0)

@@ -8,6 +8,8 @@ export const adminRolesSchema = z.enum([
   'PRINCIPAL',
   'ACCOUNTANT',
   'FINANCE_OFFICER',
+  'FINANCE_VIEWER',
+  'HR_ADMIN',
   'REGISTRAR',
   'RECEPTIONIST',
   'LIBRARIAN',

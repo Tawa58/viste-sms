@@ -24,6 +24,11 @@ const PATH_PERMISSION: Record<string, string | null> = {
   '/transport': 'students.read',
   '/check-in': 'checkin.self',
   '/staff-attendance': 'checkin.manage',
+  '/hr': 'hr.read',
+  '/payroll': 'payroll.read',
+  '/finance': 'finance.read',
+  '/expenses': 'finance.manage',
+  '/revenue': 'finance.manage',
 }
 
 function pathAllowedByPermissions(pathname: string, permissions: readonly string[]) {
@@ -55,6 +60,8 @@ const STAFF_ROLES: UserRole[] = [
   'RECEPTIONIST',
   'LIBRARIAN',
   'TRANSPORT_MANAGER',
+  'HR_ADMIN',
+  'FINANCE_VIEWER',
 ]
 
 /** Routes each role may open. `*` = full school console. */
@@ -86,6 +93,10 @@ export const ROLE_ROUTES: Record<UserRole, '*' | string[]> = {
     '/announcements',
     '/check-in',
     '/settings',
+    '/payroll',
+    '/finance',
+    '/expenses',
+    '/revenue',
   ],
   FINANCE_OFFICER: [
     '/dashboard',
@@ -96,7 +107,13 @@ export const ROLE_ROUTES: Record<UserRole, '*' | string[]> = {
     '/announcements',
     '/check-in',
     '/settings',
+    '/payroll',
+    '/finance',
+    '/expenses',
+    '/revenue',
   ],
+  HR_ADMIN: ['/dashboard', '/hr', '/announcements', '/check-in', '/settings'],
+  FINANCE_VIEWER: ['/dashboard', '/finance', '/announcements', '/check-in', '/settings'],
   REGISTRAR: [
     '/dashboard',
     '/students',
@@ -236,6 +253,10 @@ export function defaultTitleForRole(role: UserRole) {
       return 'Librarian'
     case 'TRANSPORT_MANAGER':
       return 'Transport Manager'
+    case 'HR_ADMIN':
+      return 'HR Administrator'
+    case 'FINANCE_VIEWER':
+      return 'Finance Viewer (read-only)'
     case 'PARENT':
       return 'Parent / Guardian'
     case 'STUDENT':

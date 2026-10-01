@@ -55,6 +55,8 @@ const CHECKIN_ROLES: UserRole[] = [
   'RECEPTIONIST',
   'LIBRARIAN',
   'TRANSPORT_MANAGER',
+  'HR_ADMIN',
+  'FINANCE_VIEWER',
 ]
 
 function normalizeSettings(raw: Partial<CheckinSettings> | null): CheckinSettings {

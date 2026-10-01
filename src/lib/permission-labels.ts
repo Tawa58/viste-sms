@@ -57,6 +57,14 @@ export const PERMISSION_GROUPS: { label: string; permissions: string[] }[] = [
     ],
   },
   {
+    label: 'HR & payroll',
+    permissions: ['hr.read', 'hr.manage', 'payroll.read', 'payroll.manage', 'payroll.approve'],
+  },
+  {
+    label: 'School finance',
+    permissions: ['finance.read', 'finance.manage'],
+  },
+  {
     label: 'Administration',
     permissions: ['users.manage', 'roles.manage', 'settings.manage', 'audit.read'],
   },
@@ -74,6 +82,8 @@ export const ASSIGNABLE_CONSOLE_ROLES = [
   'PRINCIPAL',
   'ACCOUNTANT',
   'FINANCE_OFFICER',
+  'FINANCE_VIEWER',
+  'HR_ADMIN',
   'REGISTRAR',
   'RECEPTIONIST',
   'LIBRARIAN',

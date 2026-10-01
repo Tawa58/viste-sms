@@ -94,6 +94,16 @@ const TransportPage = lazyPage(() => import('@/views/transport-page'), 'Transpor
 const UsersRolesPage = lazyPage(() => import('@/views/users-roles-page'), 'UsersRolesPage')
 const SettingsPage = lazyPage(() => import('@/views/settings-page'), 'SettingsPage')
 const CheckInPage = lazyPage(() => import('@/views/check-in-page'), 'CheckInPage')
+const HrStaffPage = lazyPage(() => import('@/views/hr/staff-page'), 'HrStaffPage')
+const SalaryScalesPage = lazyPage(() => import('@/views/hr/salary-scales-page'), 'SalaryScalesPage')
+const PayrollPage = lazyPage(() => import('@/views/hr/payroll-page'), 'PayrollPage')
+const DeductionsPage = lazyPage(() => import('@/views/hr/deductions-page'), 'DeductionsPage')
+const FinanceDashboardPage = lazyPage(
+  () => import('@/views/finance/finance-dashboard-page'),
+  'FinanceDashboardPage',
+)
+const ExpensesPage = lazyPage(() => import('@/views/finance/expenses-page'), 'ExpensesPage')
+const RevenuePage = lazyPage(() => import('@/views/finance/revenue-page'), 'RevenuePage')
 const StaffAttendancePage = lazyPage(
   () => import('@/views/staff-attendance-page'),
   'StaffAttendancePage',
@@ -151,6 +161,8 @@ function StudentOnlyRoute() {
 
 function DashboardRoute() {
   const { user } = useAuth()
+  if (user?.role === 'HR_ADMIN') return <Navigate to="/hr" replace />
+  if (user?.role === 'FINANCE_VIEWER') return <Navigate to="/finance" replace />
   return user?.role === 'STUDENT' ? <StudentDashboardPage /> : <DashboardPage />
 }
 
@@ -193,6 +205,13 @@ export default function App() {
                 <Route path="/examinations" element={<ExaminationsPage />} />
                 <Route path="/results" element={<ResultsPage />} />
                 <Route path="/fees" element={<FeesPage />} />
+                <Route path="/finance" element={<FinanceDashboardPage />} />
+                <Route path="/expenses" element={<ExpensesPage />} />
+                <Route path="/revenue" element={<RevenuePage />} />
+                <Route path="/hr" element={<HrStaffPage />} />
+                <Route path="/hr/salary-scales" element={<SalaryScalesPage />} />
+                <Route path="/payroll" element={<PayrollPage />} />
+                <Route path="/payroll/deductions" element={<DeductionsPage />} />
                 <Route path="/parents" element={<ParentsPage />} />
                 <Route path="/parents/:id" element={<ParentDetailPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
