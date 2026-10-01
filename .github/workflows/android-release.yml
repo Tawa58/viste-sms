@@ -89,6 +89,7 @@ jobs:
           export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/viste-sms-release.jks"
           echo "$KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
           node scripts/gradle.mjs assembleRelease
+          node scripts/gradle.mjs bundleRelease
           rm -f "$ANDROID_KEYSTORE_PATH"
           "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs release/Viste-SMS-*.apk | head -n 3
 
@@ -104,16 +105,19 @@ jobs:
           done
           gh release create "$GITHUB_REF_NAME" \
             "release/Viste-SMS-$VERSION.apk" \
+            "release/Viste-SMS-$VERSION.aab" \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --latest=false \
             --title "Viste SMS Android $VERSION" \
-            --notes "Viste SMS $VERSION for Android. Download **Viste-SMS-$VERSION.apk** on the phone and open it to install (allow installing apps from this source when asked)."
+            --notes "Viste SMS $VERSION for Android. Easiest install: open https://viste-sms.vercel.app in Chrome and tap **Install app**. Direct install: download **Viste-SMS-$VERSION.apk** on the phone and open it. **Viste-SMS-$VERSION.aab** is for uploading to Google Play."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: viste-sms-android-${{ github.sha }}
-          path: android-app/release/*.apk
+          path: |
+            android-app/release/*.apk
+            android-app/release/*.aab
           if-no-files-found: error
           retention-days: 14

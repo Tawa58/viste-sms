@@ -24,6 +24,10 @@ android {
         versionCode appVersionCode
         versionName appVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            // The app ships no native code today; this keeps any future native library to phone CPUs.
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -31,6 +35,10 @@ android {
         }
     }
     signingConfigs {
+        debug {
+            enableV1Signing true
+            enableV2Signing true
+        }
         release {
             if (releaseStoreFile) {
                 storeFile file(releaseStoreFile)
@@ -46,11 +54,16 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // R8 + resource shrinking: smaller download and faster install/dex compile on low-RAM phones.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (releaseStoreFile) {
                 signingConfig signingConfigs.release
             }
+        }
+        debug {
+            signingConfig signingConfigs.debug
         }
     }
     applicationVariants.all { variant ->
