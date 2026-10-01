@@ -22,7 +22,13 @@ import {
   isStaffRole,
 } from '@/lib/roles'
 import { catalogService } from '@/services/api'
-import { FEE_CATEGORIES, normalizeTermFees } from '@/lib/fees'
+import {
+  FEE_CATEGORIES,
+  FEE_LEVELS,
+  normalizeFeeSchedule,
+  normalizeMonthsPerTerm,
+  type FeeCategoryOption,
+} from '@/lib/fees'
 import type {
   AcademicYear,
   AuthUser,
@@ -31,7 +37,8 @@ import type {
   GradingTrack,
   SchoolProfile,
   Term,
-  TermFeeAmounts,
+  FeeAmounts,
+  FeeSchedule,
 } from '@/types'
 
 type ProfileForm = {
@@ -1019,15 +1026,61 @@ function feePolicyForm(policy: FeePolicy): Omit<FeePolicy, 'id' | 'updatedAt' | 
     nextReceiptNumber: policy.nextReceiptNumber,
     blockResultsWhenFeesOutstanding: policy.blockResultsWhenFeesOutstanding,
     overdueGraceDays: policy.overdueGraceDays,
-    termFees: normalizeTermFees(policy.termFees),
+    fees: normalizeFeeSchedule(policy.fees),
+    monthsPerTerm: normalizeMonthsPerTerm(policy.monthsPerTerm),
   }
+}
+
+const FEE_GROUPS: { key: string; title: string; categories: FeeCategoryOption[] }[] = [
+  ...FEE_LEVELS.map((level) => ({
+    key: level.value,
+    title: `${level.label} · ${level.classes}`,
+    categories: FEE_CATEGORIES.filter((c) => c.level === level.value),
+  })),
+  {
+    key: 'NON_FORMAL',
+    title: 'Non-formal · Any level',
+    categories: FEE_CATEGORIES.filter((c) => c.level === null),
+  },
+]
+
+function FeeAmountInput({
+  id,
+  label,
+  description,
+  value,
+  onChange,
+}: {
+  id: string
+  /** Shown above the input on phones, where the column headings are hidden. */
+  label: string
+  description: string
+  value: number
+  onChange: (amount: number) => void
+}) {
+  return (
+    <label htmlFor={id} className="block">
+      <span className="mb-1 block text-[11px] text-muted-foreground sm:hidden">{label}</span>
+      <Input
+        id={id}
+        aria-label={description}
+        type="number"
+        inputMode="decimal"
+        min={0}
+        step="0.01"
+        value={value || ''}
+        placeholder="0.00"
+        onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))}
+      />
+    </label>
+  )
 }
 
 function FeePolicyPanel() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<Omit<FeePolicy, 'id' | 'updatedAt' | 'updatedBy'> | null>(null)
-  const [savedFees, setSavedFees] = useState<TermFeeAmounts | null>(null)
+  const [savedFees, setSavedFees] = useState<FeeSchedule | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -1036,7 +1089,7 @@ function FeePolicyPanel() {
         const policy = await catalogService.getFeePolicy()
         if (!mounted) return
         setForm(feePolicyForm(policy))
-        setSavedFees(normalizeTermFees(policy.termFees))
+        setSavedFees(normalizeFeeSchedule(policy.fees))
       } catch (err) {
         console.error(err)
         notify.error('Could not load fee policy')
@@ -1060,14 +1113,16 @@ function FeePolicyPanel() {
         error: 'Could not save fee policy',
       })
       setForm(feePolicyForm(next))
-      setSavedFees(next.termFees)
+      setSavedFees(next.fees)
       const feesChanged = FEE_CATEGORIES.some(
-        (c) => next.termFees[c.value] !== previousFees?.[c.value],
+        (c) =>
+          next.fees[c.value].termly !== previousFees?.[c.value].termly ||
+          next.fees[c.value].monthly !== previousFees?.[c.value].monthly,
       )
       if (
         feesChanged &&
         window.confirm(
-          'Term fees changed. Bill all active students for the current term with the new amounts now?',
+          'Fees changed. Bill all active students for the current term with the new amounts now?',
         )
       ) {
         const result = await notify.process(() => catalogService.billTerm(), {
@@ -1097,42 +1152,72 @@ function FeePolicyPanel() {
       <CardHeader>
         <CardTitle>Fee policy</CardTitle>
         <CardDescription>
-          Term fees by student type, currency, receipt numbering, and whether unpaid fees block
-          results.
+          School fees by level, day scholar or boarder, and payment plan; currency, receipt
+          numbering, and whether unpaid fees block results.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <section className="space-y-3">
           <div>
-            <p className="text-sm font-medium">Term fees</p>
+            <p className="text-sm font-medium">School fees</p>
             <p className="text-xs text-muted-foreground">
-              Billed per student each term. The fee follows the student type set when registering or
-              editing a student; ECD to Grade 7 always pay the primary learner fee.
+              Enter what each type of student pays. Students on the termly plan get one invoice per
+              term; students on the monthly plan get one invoice per month ({form.monthsPerTerm} per
+              term). The level comes from the student&apos;s class; day scholar or boarder and the
+              payment plan are set when registering or editing a student.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {FEE_CATEGORIES.map((category) => (
-              <Field key={category.value}>
-                <Label htmlFor={`term-fee-${category.value}`}>
-                  {category.label} ({form.currency})
-                </Label>
-                <Input
-                  id={`term-fee-${category.value}`}
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="0.01"
-                  value={form.termFees[category.value] || ''}
-                  placeholder="0.00"
-                  onChange={(e) => {
-                    const amount = Math.max(0, Number(e.target.value) || 0)
+          <div className="overflow-hidden rounded-lg border border-border">
+            <div className="hidden grid-cols-[minmax(0,1fr)_9rem_9rem] gap-3 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground sm:grid">
+              <span>Student type</span>
+              <span>Termly fee ({form.currency} per term)</span>
+              <span>Monthly fee ({form.currency} per month)</span>
+            </div>
+            {FEE_GROUPS.map((group) => (
+              <div key={group.key} className="border-t border-border">
+                <p className="bg-muted/20 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group.title}
+                </p>
+                {group.categories.map((category) => {
+                  const amounts = form.fees[category.value]
+                  const setAmount = (key: keyof FeeAmounts, amount: number) =>
                     setForm((f) =>
-                      f ? { ...f, termFees: { ...f.termFees, [category.value]: amount } } : f,
+                      f
+                        ? {
+                            ...f,
+                            fees: {
+                              ...f.fees,
+                              [category.value]: { ...f.fees[category.value], [key]: amount },
+                            },
+                          }
+                        : f,
                     )
-                  }}
-                />
-                <p className="text-xs text-muted-foreground">{category.hint}</p>
-              </Field>
+                  return (
+                    <div
+                      key={category.value}
+                      className="grid grid-cols-2 items-center gap-2 border-t border-border/60 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_9rem_9rem] sm:gap-3"
+                    >
+                      <p className="col-span-2 text-sm font-medium sm:col-span-1">
+                        {category.label}
+                      </p>
+                      <FeeAmountInput
+                        id={`fee-${category.value}-termly`}
+                        label={`Termly (${form.currency})`}
+                        description={`${category.label} — termly fee (${form.currency})`}
+                        value={amounts.termly}
+                        onChange={(amount) => setAmount('termly', amount)}
+                      />
+                      <FeeAmountInput
+                        id={`fee-${category.value}-monthly`}
+                        label={`Monthly (${form.currency})`}
+                        description={`${category.label} — monthly fee (${form.currency})`}
+                        value={amounts.monthly}
+                        onChange={(amount) => setAmount('monthly', amount)}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
             ))}
           </div>
         </section>
@@ -1184,6 +1269,25 @@ function FeePolicyPanel() {
                 )
               }
             />
+          </Field>
+          <Field>
+            <Label htmlFor="fee-months-per-term">Monthly invoices per term</Label>
+            <Select
+              id="fee-months-per-term"
+              value={String(form.monthsPerTerm)}
+              onChange={(e) =>
+                setForm((f) => (f ? { ...f, monthsPerTerm: Number(e.target.value) } : f))
+              }
+            >
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {n} month{n === 1 ? '' : 's'}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Monthly-plan students are billed this many times a term, from the term start date.
+            </p>
           </Field>
         </div>
         <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">

@@ -30,6 +30,7 @@ export const studentCreateSchema = z.object({
   admissionDate: isoDateSchema,
   status: studentStatusSchema.default('ACTIVE'),
   residency: z.enum(['DAY', 'BOARDER', 'NON_FORMAL']).optional(),
+  paymentPlan: z.enum(['TERMLY', 'MONTHLY']).optional(),
   classId: idSchema,
   streamId: idSchema.optional().or(z.literal('')),
   educationLevelId: z.string().min(1).max(40).optional(),
@@ -398,7 +399,8 @@ export const schoolProfileSchema = z.object({
   registrationNumber: z.string().trim().max(80).optional().or(z.literal('')),
 })
 
-const termFeeAmountSchema = z.number().min(0).max(1_000_000)
+const feeAmountSchema = z.number().min(0).max(1_000_000)
+const feeAmountsSchema = z.object({ termly: feeAmountSchema, monthly: feeAmountSchema })
 
 export const feePolicySchema = z.object({
   currency: z.string().trim().min(3).max(8),
@@ -406,14 +408,20 @@ export const feePolicySchema = z.object({
   nextReceiptNumber: z.number().int().min(1).max(9_999_999),
   blockResultsWhenFeesOutstanding: z.boolean(),
   overdueGraceDays: z.number().int().min(0).max(365),
-  termFees: z
+  fees: z
     .object({
-      BOARDING: termFeeAmountSchema,
-      DAY: termFeeAmountSchema,
-      PRIMARY: termFeeAmountSchema,
-      NON_FORMAL: termFeeAmountSchema,
+      ECD_DAY: feeAmountsSchema,
+      ECD_BOARDER: feeAmountsSchema,
+      PRIMARY_DAY: feeAmountsSchema,
+      PRIMARY_BOARDER: feeAmountsSchema,
+      O_LEVEL_DAY: feeAmountsSchema,
+      O_LEVEL_BOARDER: feeAmountsSchema,
+      A_LEVEL_DAY: feeAmountsSchema,
+      A_LEVEL_BOARDER: feeAmountsSchema,
+      NON_FORMAL: feeAmountsSchema,
     })
     .optional(),
+  monthsPerTerm: z.number().int().min(1).max(6).optional(),
 })
 
 export const termBillingSchema = z.object({

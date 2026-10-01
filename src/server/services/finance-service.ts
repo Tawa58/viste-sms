@@ -10,12 +10,20 @@ import { getDoc, newId, queryCollection } from '@/server/repositories/firestore-
 import { ensureCurrentAcademicCalendar } from '@/server/services/academic-calendar-service'
 import { getFeePolicy } from '@/server/services/school-settings-service'
 import { resolveEducationLevelId } from '@/lib/education-levels'
-import { feeCategoryFor, termInvoiceId } from '@/lib/fees'
+import {
+  feeAmountFor,
+  feeCategoryFor,
+  hasAnyFee,
+  monthlyInstalments,
+  monthlyInvoiceId,
+  termInvoiceId,
+} from '@/lib/fees'
 import type { PaymentCreateInput } from '@/server/validators/school'
 import type {
   FeePolicy,
   Invoice,
   Payment,
+  PaymentPlan,
   SchoolClass,
   Student,
   Term,
@@ -67,7 +75,51 @@ export async function resolveBillingTerm(termId?: string): Promise<Term> {
 
 type BillOutcome = 'created' | 'updated' | 'unchanged' | 'skipped'
 
-/** Create or re-price the student's invoice for the term from the fee policy. */
+type PlannedInvoice = Pick<Invoice, 'id' | 'number' | 'dueDate' | 'period'>
+
+/** Monthly-plan invoice ids for a term, up to the largest months-per-term setting. */
+const MAX_MONTHS_PER_TERM = 6
+
+function planInvoiceIds(termId: string, studentId: string, plan: PaymentPlan): string[] {
+  if (plan === 'TERMLY') return [termInvoiceId(termId, studentId)]
+  return Array.from({ length: MAX_MONTHS_PER_TERM }, (_, i) =>
+    monthlyInvoiceId(termId, studentId, i + 1),
+  )
+}
+
+/** Termly: one invoice. Monthly: the first month plus every month that has started. */
+function plannedInvoices(
+  student: Student,
+  term: Term,
+  policy: FeePolicy,
+  plan: PaymentPlan,
+): PlannedInvoice[] {
+  const code = term.id.replace(/^term-/, '')
+  if (plan === 'TERMLY') {
+    return [
+      {
+        id: termInvoiceId(term.id, student.id),
+        number: `INV-${code}-${student.studentNumber}`,
+        dueDate: addDays(term.startDate, policy.overdueGraceDays),
+      },
+    ]
+  }
+  const today = new Date().toISOString().slice(0, 10)
+  return monthlyInstalments(term.startDate, policy.monthsPerTerm, policy.overdueGraceDays)
+    .filter((m) => m.instalment === 1 || m.issueDate <= today)
+    .map((m) => ({
+      id: monthlyInvoiceId(term.id, student.id, m.instalment),
+      number: `INV-${code}-${student.studentNumber}-M${m.instalment}`,
+      dueDate: m.dueDate,
+      period: m.period,
+    }))
+}
+
+/**
+ * Create or re-price the student's invoices for the term from the fee policy.
+ * Switching plan replaces the other plan's invoices for the term unless money has
+ * already been paid against them; then the term stays on that plan.
+ */
 async function billStudentForTerm(
   student: Student,
   educationLevelId: string | undefined,
@@ -75,51 +127,103 @@ async function billStudentForTerm(
   policy: FeePolicy,
 ): Promise<BillOutcome> {
   const db = getAdminDb()
+  const invoicesRef = db.collection('invoices')
   const category = feeCategoryFor(student.residency, educationLevelId)
-  const amount = policy.termFees[category] ?? 0
-  const id = termInvoiceId(term.id, student.id)
-  const ref = db.collection('invoices').doc(id)
+  const chosen: PaymentPlan = student.paymentPlan ?? 'TERMLY'
+  const other: PaymentPlan = chosen === 'TERMLY' ? 'MONTHLY' : 'TERMLY'
 
   return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref)
-    if (!snap.exists) {
-      if (amount <= 0 || student.status !== 'ACTIVE') return 'skipped'
-      const dueDate = addDays(term.startDate, policy.overdueGraceDays)
-      const invoice: Invoice = {
-        id,
-        studentId: student.id,
-        number: `INV-${term.id.replace(/^term-/, '')}-${student.studentNumber}`,
-        dueDate,
-        total: amount,
-        paid: 0,
-        status: invoiceStatus(amount, 0, dueDate),
-        termId: term.id,
-        termName: term.name,
-        category,
-        createdAt: new Date().toISOString(),
+    const otherSnaps = (
+      await tx.getAll(...planInvoiceIds(term.id, student.id, other).map((id) => invoicesRef.doc(id)))
+    ).filter((s) => s.exists)
+    const otherHasPayments = (
+      await Promise.all(
+        otherSnaps.map((s) =>
+          ((s.data() as Invoice).paid ?? 0) > 0
+            ? Promise.resolve(true)
+            : tx
+                .get(db.collection('payments').where('invoiceId', '==', s.id).limit(1))
+                .then((q) => !q.empty),
+        ),
+      )
+    ).some(Boolean)
+    const plan = otherHasPayments ? other : chosen
+    const amount = feeAmountFor(policy.fees, category, plan)
+    const planned = plannedInvoices(student, term, policy, plan)
+    const snaps = await tx.getAll(...planned.map((p) => invoicesRef.doc(p.id)))
+
+    const repriced = new Map<string, number>()
+    for (const snap of snaps) {
+      if (!snap.exists || amount <= 0) continue
+      const existing = snap.data() as Invoice
+      if (
+        existing.total === amount &&
+        existing.category === category &&
+        (existing.plan ?? 'TERMLY') === plan
+      ) {
+        continue
       }
-      tx.set(ref, invoice)
-      return 'created'
+      const confirmed = await tx.get(
+        db
+          .collection('payments')
+          .where('invoiceId', '==', snap.id)
+          .where('status', '==', 'CONFIRMED'),
+      )
+      repriced.set(
+        snap.id,
+        roundMoney(confirmed.docs.reduce((sum, d) => sum + ((d.data() as Payment).amount ?? 0), 0)),
+      )
     }
 
-    const existing = { ...(snap.data() as Invoice), id }
-    if (amount <= 0 || (existing.total === amount && existing.category === category)) {
-      return 'unchanged'
-    }
-    const confirmed = await tx.get(
-      db.collection('payments').where('invoiceId', '==', id).where('status', '==', 'CONFIRMED'),
-    )
-    const paid = roundMoney(
-      confirmed.docs.reduce((sum, d) => sum + ((d.data() as Payment).amount ?? 0), 0),
-    )
-    tx.set(ref, {
-      ...existing,
-      total: amount,
-      category,
-      paid,
-      status: invoiceStatus(amount, paid, existing.dueDate),
+    if (amount <= 0) return snaps.some((s) => s.exists) ? 'unchanged' : 'skipped'
+
+    let created = 0
+    let updated = 0
+    planned.forEach((p, i) => {
+      const snap = snaps[i]!
+      if (!snap.exists) {
+        if (student.status !== 'ACTIVE') return
+        const invoice: Invoice = {
+          ...p,
+          studentId: student.id,
+          total: amount,
+          paid: 0,
+          status: invoiceStatus(amount, 0, p.dueDate),
+          termId: term.id,
+          termName: term.name,
+          category,
+          plan,
+          createdAt: new Date().toISOString(),
+        }
+        if (!invoice.period) delete invoice.period
+        tx.set(snap.ref, invoice)
+        created += 1
+        return
+      }
+      const paid = repriced.get(snap.id)
+      if (paid === undefined) return
+      const existing = { ...(snap.data() as Invoice), id: snap.id }
+      tx.set(snap.ref, {
+        ...existing,
+        total: amount,
+        category,
+        plan,
+        paid,
+        status: invoiceStatus(amount, paid, existing.dueDate),
+      })
+      updated += 1
     })
-    return 'updated'
+
+    if (plan === chosen && (created > 0 || snaps.some((s) => s.exists))) {
+      for (const s of otherSnaps) {
+        tx.delete(s.ref)
+        updated += 1
+      }
+    }
+
+    if (created > 0) return 'created'
+    if (updated > 0) return 'updated'
+    return snaps.some((s) => s.exists) ? 'unchanged' : 'skipped'
   })
 }
 
@@ -133,25 +237,18 @@ async function classLevelMap(): Promise<Map<string, string | undefined>> {
   return map
 }
 
-/** Bill every active student for the term; re-running re-prices existing term invoices. */
-export async function generateTermInvoices(
-  session: SessionContext,
-  termId?: string,
-  requestId?: string,
+async function billActiveStudents(
+  term: Term,
+  policy: FeePolicy,
+  include: (student: Student) => boolean = () => true,
 ): Promise<TermBillingResult> {
-  requirePermission(session, 'fees.create')
-  const [term, policy] = await Promise.all([resolveBillingTerm(termId), getFeePolicy()])
-  if (!Object.values(policy.termFees).some((amount) => amount > 0)) {
-    throw badRequest('Set the term fee amounts in Settings → Fees before billing.')
-  }
-
   const [studentsSnap, levels] = await Promise.all([
     getAdminDb().collection('students').where('status', '==', 'ACTIVE').get(),
     classLevelMap(),
   ])
-  const students = studentsSnap.docs.map(
-    (d) => ({ id: d.id, ...(d.data() as Omit<Student, 'id'>) }) as Student,
-  )
+  const students = studentsSnap.docs
+    .map((d) => ({ id: d.id, ...(d.data() as Omit<Student, 'id'>) }) as Student)
+    .filter(include)
 
   const result: TermBillingResult = {
     termId: term.id,
@@ -170,6 +267,22 @@ export async function generateTermInvoices(
     }
   }
   await Promise.all(Array.from({ length: Math.min(8, students.length) }, worker))
+  return result
+}
+
+/** Bill every active student for the term; re-running re-prices existing invoices. */
+export async function generateTermInvoices(
+  session: SessionContext,
+  termId?: string,
+  requestId?: string,
+): Promise<TermBillingResult> {
+  requirePermission(session, 'fees.create')
+  const [term, policy] = await Promise.all([resolveBillingTerm(termId), getFeePolicy()])
+  if (!hasAnyFee(policy.fees)) {
+    throw badRequest('Set the fee amounts in Settings → Fees before billing.')
+  }
+
+  const result = await billActiveStudents(term, policy)
 
   await writeAuditLog({
     actorId: session.uid,
@@ -181,6 +294,13 @@ export async function generateTermInvoices(
     metadata: { ...result },
   })
   return result
+}
+
+/** Daily job: raise the invoice for each month that has started for monthly-plan students. */
+export async function raiseMonthlyInvoices(): Promise<TermBillingResult | null> {
+  const [term, policy] = await Promise.all([resolveBillingTerm(), getFeePolicy()])
+  if (!hasAnyFee(policy.fees)) return null
+  return billActiveStudents(term, policy, (s) => s.paymentPlan === 'MONTHLY')
 }
 
 /**

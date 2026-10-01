@@ -302,6 +302,7 @@ export function StudentsPage() {
         admissionDate: form.admissionDate,
         status: form.status,
         residency: form.residency,
+        paymentPlan: form.paymentPlan,
         classId: form.classId,
         streamId: form.streamId || undefined,
         educationLevelId: form.educationLevelId || undefined,

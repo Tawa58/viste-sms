@@ -6,12 +6,13 @@ import { Field } from '@/components/ui/field'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { educationLevelName, resolveEducationLevelId } from '@/lib/education-levels'
-import { RESIDENCY_OPTIONS, feeCategoryFor, feeCategoryLabel } from '@/lib/fees'
+import { PAYMENT_PLANS, RESIDENCY_OPTIONS, feeCategoryFor, feeCategoryLabel } from '@/lib/fees'
 import { cn } from '@/lib/utils'
 import type {
   ClubActivity,
   Guardian,
   House,
+  PaymentPlan,
   SchoolClass,
   Sport,
   Stream,
@@ -46,6 +47,7 @@ export type StudentFormValues = {
   admissionDate: string
   status: StudentStatus
   residency: StudentResidency
+  paymentPlan: PaymentPlan
   classId: string
   streamId: string
   educationLevelId: string
@@ -74,6 +76,7 @@ export function studentToFormValues(student?: Student | null): StudentFormValues
     admissionDate: student?.admissionDate ?? new Date().toISOString().slice(0, 10),
     status: student?.status ?? 'ACTIVE',
     residency: student?.residency ?? 'DAY',
+    paymentPlan: student?.paymentPlan ?? 'TERMLY',
     classId: student?.classId ?? '',
     streamId: student?.streamId ?? '',
     educationLevelId: student?.educationLevelId ?? '',
@@ -466,8 +469,25 @@ export function StudentEditorForm({
               ))}
             </Select>
             <p className="text-xs text-muted-foreground">
-              Billed the {feeCategoryLabel(feeCategoryFor(values.residency, levelId)).toLowerCase()}{' '}
-              each term.
+              Fee type: {feeCategoryLabel(feeCategoryFor(values.residency, levelId))}.
+            </p>
+          </Field>
+
+          <Field>
+            <Label htmlFor="student-payment-plan">Payment plan</Label>
+            <Select
+              id="student-payment-plan"
+              value={values.paymentPlan}
+              onChange={(e) => setField('paymentPlan', e.target.value as PaymentPlan)}
+            >
+              {PAYMENT_PLANS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {PAYMENT_PLANS.find((o) => o.value === values.paymentPlan)?.hint}.
             </p>
           </Field>
 

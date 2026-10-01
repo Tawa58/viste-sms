@@ -175,6 +175,7 @@ export async function createStudent(
     admissionDate: input.admissionDate,
     status: input.status ?? 'ACTIVE',
     residency: input.residency ?? 'DAY',
+    paymentPlan: input.paymentPlan ?? 'TERMLY',
     classId: input.classId,
     streamId,
     educationLevelId,
@@ -297,6 +298,7 @@ export async function updateStudent(
   })
   if (
     (next.residency ?? 'DAY') !== (current.residency ?? 'DAY') ||
+    (next.paymentPlan ?? 'TERMLY') !== (current.paymentPlan ?? 'TERMLY') ||
     next.educationLevelId !== current.educationLevelId ||
     (next.status === 'ACTIVE' && current.status !== 'ACTIVE')
   ) {

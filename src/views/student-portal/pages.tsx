@@ -756,7 +756,9 @@ export function MyFeesPage() {
                   {fees.invoices.map((inv) => (
                     <tr key={inv.id}>
                       <td className="px-4 py-2.5 font-medium">{inv.number}</td>
-                      <td className="px-4 py-2.5">{inv.termName ?? '—'}</td>
+                      <td className="px-4 py-2.5">
+                        {[inv.termName, inv.period].filter(Boolean).join(' · ') || '—'}
+                      </td>
                       <td className="px-4 py-2.5">{shortDate(inv.dueDate)}</td>
                       <td className="px-4 py-2.5 tabular-nums">{money(inv.total, fees.currency)}</td>
                       <td className="px-4 py-2.5 tabular-nums">{money(inv.paid, fees.currency)}</td>

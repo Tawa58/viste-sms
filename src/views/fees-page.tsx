@@ -43,7 +43,15 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/contexts/auth-context'
 import { catalogService, studentService } from '@/services/api'
-import { FEE_CATEGORIES, feeCategoryFor, feeCategoryLabel, residencyLabel } from '@/lib/fees'
+import {
+  FEE_CATEGORIES,
+  FEE_LEVELS,
+  PAYMENT_PLANS,
+  feeCategoryFor,
+  feeCategoryLabel,
+  hasAnyFee,
+  paymentPlanLabel,
+} from '@/lib/fees'
 import { copyText } from '@/lib/native-app'
 import { notify } from '@/lib/notify'
 import { canManageSchoolSettings, canManageStudents, hasAppPermission } from '@/lib/roles'
@@ -53,6 +61,7 @@ import type {
   FeePolicy,
   Invoice,
   Payment,
+  PaymentPlan,
   RecordPaymentResult,
   SchoolClass,
   Student,
@@ -64,6 +73,7 @@ type AccountState = 'CLEARED' | 'OWING' | 'OVERDUE' | 'NOT_BILLED'
 type StudentAccount = {
   student: Student
   category: FeeCategory
+  plan: PaymentPlan
   /** Oldest due first. */
   invoices: Invoice[]
   billed: number
@@ -127,6 +137,7 @@ export function FeesPage() {
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<'all' | AccountState>('all')
   const [categoryFilter, setCategoryFilter] = useState<'all' | FeeCategory>('all')
+  const [planFilter, setPlanFilter] = useState<'all' | PaymentPlan>('all')
   const [accountsShown, setAccountsShown] = useState(PAGE)
   const [paymentsShown, setPaymentsShown] = useState(25)
   const [billing, setBilling] = useState(false)
@@ -193,6 +204,7 @@ export function FeesPage() {
         return {
           student,
           category: feeCategoryFor(student.residency, level),
+          plan: student.paymentPlan ?? 'TERMLY',
           invoices: list,
           billed,
           paid,
@@ -208,15 +220,16 @@ export function FeesPage() {
     return accounts.filter((a) => {
       if (stateFilter !== 'all' && a.state !== stateFilter) return false
       if (categoryFilter !== 'all' && a.category !== categoryFilter) return false
+      if (planFilter !== 'all' && a.plan !== planFilter) return false
       if (!q) return true
       return (
         fullName(a.student).toLowerCase().includes(q) ||
         a.student.studentNumber.toLowerCase().includes(q)
       )
     })
-  }, [accounts, search, stateFilter, categoryFilter])
+  }, [accounts, search, stateFilter, categoryFilter, planFilter])
 
-  useEffect(() => setAccountsShown(PAGE), [search, stateFilter, categoryFilter])
+  useEffect(() => setAccountsShown(PAGE), [search, stateFilter, categoryFilter, planFilter])
 
   const totals = useMemo(() => {
     const billed = invoices.reduce((s, i) => s + i.total, 0)
@@ -231,17 +244,20 @@ export function FeesPage() {
   }, [invoices, payments])
 
   const categoryCounts = useMemo(() => {
-    const counts: Record<FeeCategory, number> = { BOARDING: 0, DAY: 0, PRIMARY: 0, NON_FORMAL: 0 }
+    const counts = Object.fromEntries(FEE_CATEGORIES.map((c) => [c.value, 0])) as Record<
+      FeeCategory,
+      number
+    >
     for (const a of accounts) if (a.student.status === 'ACTIVE') counts[a.category] += 1
     return counts
   }, [accounts])
 
   const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students])
-  const feesNotSet = policy ? !Object.values(policy.termFees).some((v) => v > 0) : false
+  const feesNotSet = policy ? !hasAnyFee(policy.fees) : false
 
   async function billTerm() {
     const ok = window.confirm(
-      'Bill every active student for the current term using the fees in Settings → Fees?\n\nStudents already billed for this term have their invoice updated to the current amount; payments are kept.',
+      'Bill every active student for the current term using the fees in Settings → Fees?\n\nTermly-plan students get one invoice for the term. Monthly-plan students get an invoice for each month that has started; later months are raised automatically. Existing invoices are updated to the current amount; payments are kept.',
     )
     if (!ok) return
     setBilling(true)
@@ -297,7 +313,7 @@ export function FeesPage() {
     <div>
       <PageHeader
         title="Fees & Payments"
-        description="Term fees by student type, payments, receipts, and balances."
+        description="School fees by level and student type, termly or monthly plans, payments, receipts, and balances."
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Fees & Payments' }]}
         actions={
           <div className="flex flex-wrap gap-2">
@@ -318,17 +334,17 @@ export function FeesPage() {
       />
 
       {feesNotSet ? (
-        <Alert title="Term fees are not set" tone="warning" className="mb-4">
+        <Alert title="School fees are not set" tone="warning" className="mb-4">
           {canEditFees ? (
             <>
-              Enter the boarding, day scholar, primary learner, and non-formal fees in{' '}
+              Enter the day scholar and boarder fees for ECD, primary, secondary and A-Level in{' '}
               <Link to="/settings?tab=fees" className="font-medium underline">
                 Settings → Fees
               </Link>
               , then bill the current term.
             </>
           ) : (
-            'Ask a school administrator to enter the term fees in Settings → Fees.'
+            'Ask a school administrator to enter the school fees in Settings → Fees.'
           )}
         </Alert>
       ) : null}
@@ -357,9 +373,10 @@ export function FeesPage() {
 
       <Card className="mt-4">
         <CardHeader>
-          <CardTitle>Term fees</CardTitle>
+          <CardTitle>Fee structure</CardTitle>
           <CardDescription>
-            Per student, per term.{' '}
+            Termly fee per term and monthly fee per month, for day scholars and boarders at each
+            level. Select a fee to filter the student accounts.{' '}
             {canEditFees ? (
               <Link to="/settings?tab=fees" className="text-primary hover:underline">
                 Change amounts
@@ -367,26 +384,49 @@ export function FeesPage() {
             ) : null}
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-          {FEE_CATEGORIES.map((c) => (
-            <button
-              key={c.value}
-              type="button"
-              onClick={() =>
-                setCategoryFilter((prev) => (prev === c.value ? 'all' : c.value))
-              }
-              className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
-                categoryFilter === c.value
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:bg-muted/40'
-              }`}
-            >
-              <p className="text-xs text-muted-foreground">{c.label}</p>
-              <p className="mt-1 font-semibold">{money(policy?.termFees[c.value] ?? 0)}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {categoryCounts[c.value]} active student{categoryCounts[c.value] === 1 ? '' : 's'}
+        <CardContent className="grid gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-5">
+          {[
+            ...FEE_LEVELS.map((l) => ({ key: l.value, title: l.label, sub: l.classes })),
+            { key: null, title: 'Non-formal', sub: 'Any level' },
+          ].map((group) => (
+            <div key={group.key ?? 'NON_FORMAL'} className="rounded-lg border border-border p-2">
+              <p className="px-1 text-sm font-semibold">
+                {group.title}{' '}
+                <span className="text-xs font-normal text-muted-foreground">{group.sub}</span>
               </p>
-            </button>
+              <div className="mt-1.5 space-y-1">
+                {FEE_CATEGORIES.filter((c) => c.level === group.key).map((c) => {
+                  const amounts = policy?.fees[c.value]
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() =>
+                        setCategoryFilter((prev) => (prev === c.value ? 'all' : c.value))
+                      }
+                      className={`w-full rounded-md border px-2.5 py-2 text-left text-sm transition-colors ${
+                        categoryFilter === c.value
+                          ? 'border-primary bg-primary/5'
+                          : 'border-transparent hover:bg-muted/40'
+                      }`}
+                    >
+                      <p className="text-xs text-muted-foreground">{c.short}</p>
+                      <p className="mt-0.5 font-semibold tabular-nums">
+                        {money(amounts?.termly ?? 0)}
+                        <span className="text-xs font-normal text-muted-foreground"> / term</span>
+                      </p>
+                      <p className="text-xs tabular-nums text-muted-foreground">
+                        {money(amounts?.monthly ?? 0)} / month
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {categoryCounts[c.value]} active student
+                        {categoryCounts[c.value] === 1 ? '' : 's'}
+                      </p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           ))}
         </CardContent>
       </Card>
@@ -400,7 +440,7 @@ export function FeesPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
             <SearchInput
               id="fees-search"
               name="fees-search"
@@ -426,6 +466,17 @@ export function FeesPage() {
               {FEE_CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={planFilter}
+              onChange={(e) => setPlanFilter(e.target.value as 'all' | PaymentPlan)}
+            >
+              <option value="all">All payment plans</option>
+              {PAYMENT_PLANS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
                 </option>
               ))}
             </Select>
@@ -464,8 +515,8 @@ export function FeesPage() {
                         </p>
                       </DataTableCell>
                       <DataTableCell className="text-xs">
-                        <p>{residencyLabel(a.student.residency)}</p>
-                        <p className="text-muted-foreground">{feeCategoryLabel(a.category)}</p>
+                        <p>{feeCategoryLabel(a.category)}</p>
+                        <p className="text-muted-foreground">{paymentPlanLabel(a.plan)} plan</p>
                       </DataTableCell>
                       <DataTableCell className="text-right tabular-nums">
                         {money(a.billed)}
@@ -763,7 +814,7 @@ function RecordPaymentDialog({
                 {unpaid.length === 0 ? <option value="">Nothing owing</option> : null}
                 {unpaid.map((i) => (
                   <option key={i.id} value={i.id}>
-                    {[i.termName, i.number].filter(Boolean).join(' · ')} · balance{' '}
+                    {[i.termName, i.period, i.number].filter(Boolean).join(' · ')} · balance{' '}
                     {formatMoney(invoiceBalance(i), currency)}
                   </option>
                 ))}
@@ -771,6 +822,7 @@ function RecordPaymentDialog({
               {invoice ? (
                 <p className="text-xs text-muted-foreground">
                   {invoice.category ? `${feeCategoryLabel(invoice.category)} · ` : ''}
+                  {invoice.plan ? `${paymentPlanLabel(invoice.plan)} · ` : ''}
                   Due {formatDate(invoice.dueDate)}
                 </p>
               ) : null}

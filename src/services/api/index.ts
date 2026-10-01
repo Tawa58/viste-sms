@@ -86,6 +86,18 @@ import {
   apiSubjectAdminService,
 } from '@/services/api/server-api-services'
 import { readPublicEnv } from '@/lib/env'
+import { DEFAULT_MONTHS_PER_TERM, normalizeFeeSchedule } from '@/lib/fees'
+
+let mockFeePolicy: import('@/types').FeePolicy = {
+  id: 'feePolicy',
+  currency: 'USD',
+  receiptPrefix: 'VHS',
+  nextReceiptNumber: 1001,
+  blockResultsWhenFeesOutstanding: true,
+  overdueGraceDays: 14,
+  fees: normalizeFeeSchedule(null),
+  monthsPerTerm: DEFAULT_MONTHS_PER_TERM,
+}
 
 /**
  * Live mode uses Next.js /api/v1 (Firebase Admin) — server is authority.
@@ -853,19 +865,13 @@ const mockCatalogService = {
   updateSchoolProfile: async (
     input: Omit<import('@/types').SchoolProfile, 'id' | 'updatedAt' | 'updatedBy'>,
   ) => mockRequest({ id: 'schoolProfile' as const, ...input }),
-  getFeePolicy: async () =>
-    mockRequest({
-      id: 'feePolicy' as const,
-      currency: 'USD',
-      receiptPrefix: 'VHS',
-      nextReceiptNumber: 1001,
-      blockResultsWhenFeesOutstanding: true,
-      overdueGraceDays: 14,
-      termFees: { BOARDING: 0, DAY: 0, PRIMARY: 0, NON_FORMAL: 0 },
-    }),
+  getFeePolicy: async () => mockRequest({ ...mockFeePolicy }),
   updateFeePolicy: async (
     input: Omit<import('@/types').FeePolicy, 'id' | 'updatedAt' | 'updatedBy'>,
-  ) => mockRequest({ id: 'feePolicy' as const, ...input }),
+  ) => {
+    mockFeePolicy = { id: 'feePolicy', ...input }
+    return mockRequest({ ...mockFeePolicy })
+  },
   getAcademicSettings: async () => {
     const year = academicYears.find((y) => y.isCurrent) ?? academicYears[0]
     const yearTerms = terms.filter((t) => t.academicYearId === year?.id)

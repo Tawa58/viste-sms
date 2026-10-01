@@ -102,10 +102,35 @@ export interface SchoolProfile {
 /** How a student attends school — drives which term fee they are billed. */
 export type StudentResidency = 'DAY' | 'BOARDER' | 'NON_FORMAL'
 
-/** Term fee categories configured in Settings → Fees. */
-export type FeeCategory = 'BOARDING' | 'DAY' | 'PRIMARY' | 'NON_FORMAL'
+/** How a student pays: one invoice per term, or one invoice per month of the term. */
+export type PaymentPlan = 'TERMLY' | 'MONTHLY'
 
-export type TermFeeAmounts = Record<FeeCategory, number>
+/** Fee levels: ECD, Grade 1–7, Form 1–4, Form 5–6. */
+export type FeeLevel = 'ECD' | 'PRIMARY' | 'O_LEVEL' | 'A_LEVEL'
+
+/** Fee categories configured in Settings → Fees (level × day scholar / boarder). */
+export type FeeCategory =
+  | 'ECD_DAY'
+  | 'ECD_BOARDER'
+  | 'PRIMARY_DAY'
+  | 'PRIMARY_BOARDER'
+  | 'O_LEVEL_DAY'
+  | 'O_LEVEL_BOARDER'
+  | 'A_LEVEL_DAY'
+  | 'A_LEVEL_BOARDER'
+  | 'NON_FORMAL'
+
+/** Categories on invoices raised before fees were split by level. */
+export type LegacyFeeCategory = 'BOARDING' | 'DAY' | 'PRIMARY'
+
+export interface FeeAmounts {
+  /** Billed once per term on the termly plan. */
+  termly: number
+  /** Billed each month of the term on the monthly plan. */
+  monthly: number
+}
+
+export type FeeSchedule = Record<FeeCategory, FeeAmounts>
 
 /** Fee and receipt policy for the school. */
 export interface FeePolicy {
@@ -115,8 +140,10 @@ export interface FeePolicy {
   nextReceiptNumber: number
   blockResultsWhenFeesOutstanding: boolean
   overdueGraceDays: number
-  /** Amount billed per student per term, by fee category. */
-  termFees: TermFeeAmounts
+  /** Termly and monthly amount per fee category. */
+  fees: FeeSchedule
+  /** Monthly-plan invoices raised per term (one per month from the term start). */
+  monthsPerTerm: number
   updatedAt?: string
   updatedBy?: string
 }
@@ -137,6 +164,8 @@ export interface Student {
   status: StudentStatus
   /** Day scholar, boarder, or non-formal learner (defaults to day). */
   residency?: StudentResidency
+  /** Termly or monthly fee payments (defaults to termly). */
+  paymentPlan?: PaymentPlan
   classId: string
   streamId: string
   /** Canonical education level id (ecd, grade-1, form-1, …). */
@@ -553,7 +582,10 @@ export interface Invoice {
   /** Set on term fee invoices. */
   termId?: string
   termName?: string
-  category?: FeeCategory
+  category?: FeeCategory | LegacyFeeCategory
+  plan?: PaymentPlan
+  /** Month covered by a monthly-plan invoice, e.g. "February 2027". */
+  period?: string
   createdAt?: string
 }
 

@@ -29,7 +29,7 @@ import { useAuth } from '@/contexts/auth-context'
 import { notify } from '@/lib/notify'
 import { canEditStudentLimited, canManageStudents } from '@/lib/roles'
 import { educationLevelName } from '@/lib/education-levels'
-import { feeCategoryFor, feeCategoryLabel, residencyLabel } from '@/lib/fees'
+import { feeCategoryFor, feeCategoryLabel, paymentPlanLabel } from '@/lib/fees'
 import { catalogService, studentService } from '@/services/api'
 import { formatCurrency, formatDate, fullName } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -165,6 +165,7 @@ export function StudentDetailPage() {
             admissionDate: form.admissionDate,
             status: form.status,
             residency: form.residency,
+            paymentPlan: form.paymentPlan,
             streamId: form.streamId,
             educationLevelId: form.educationLevelId || undefined,
             academicYearId: form.academicYearId || undefined,
@@ -479,7 +480,6 @@ export function StudentDetailPage() {
               <div>
                 <dt className="text-muted-foreground">Student type</dt>
                 <dd>
-                  {residencyLabel(student.residency)} ·{' '}
                   {feeCategoryLabel(
                     feeCategoryFor(
                       student.residency,
@@ -488,6 +488,10 @@ export function StudentDetailPage() {
                     ),
                   )}
                 </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Payment plan</dt>
+                <dd>{paymentPlanLabel(student.paymentPlan)}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Date of birth</dt>
@@ -639,7 +643,11 @@ export function StudentDetailPage() {
                   <div>
                     <p className="font-medium">{inv.number}</p>
                     <p className="text-xs text-muted-foreground">
-                      {[inv.termName, inv.category ? feeCategoryLabel(inv.category) : null]
+                      {[
+                        inv.termName,
+                        inv.period,
+                        inv.category ? feeCategoryLabel(inv.category) : null,
+                      ]
                         .filter(Boolean)
                         .join(' · ')}
                       {inv.termName || inv.category ? ' · ' : ''}Due {formatDate(inv.dueDate)}

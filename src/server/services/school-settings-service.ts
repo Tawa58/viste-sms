@@ -3,7 +3,12 @@ import 'server-only'
 import type { SessionContext } from '@/server/auth/session'
 import { requirePermission } from '@/server/authorization/permissions'
 import { getDoc, setDoc } from '@/server/repositories/firestore-repo'
-import { DEFAULT_TERM_FEES, normalizeTermFees } from '@/lib/fees'
+import {
+  DEFAULT_FEE_SCHEDULE,
+  DEFAULT_MONTHS_PER_TERM,
+  normalizeFeeSchedule,
+  normalizeMonthsPerTerm,
+} from '@/lib/fees'
 import type { FeePolicy, SchoolProfile } from '@/types'
 
 export const DEFAULT_SCHOOL_PROFILE: SchoolProfile = {
@@ -24,7 +29,8 @@ export const DEFAULT_FEE_POLICY: FeePolicy = {
   nextReceiptNumber: 1001,
   blockResultsWhenFeesOutstanding: true,
   overdueGraceDays: 14,
-  termFees: { ...DEFAULT_TERM_FEES },
+  fees: DEFAULT_FEE_SCHEDULE,
+  monthsPerTerm: DEFAULT_MONTHS_PER_TERM,
 }
 
 export async function getSchoolProfile(): Promise<SchoolProfile> {
@@ -63,13 +69,20 @@ export async function updateSchoolProfileService(
   return row
 }
 
+type StoredFeePolicy = Partial<FeePolicy> & {
+  id: string
+  termFees?: Parameters<typeof normalizeFeeSchedule>[1]
+}
+
 export async function getFeePolicy(): Promise<FeePolicy> {
-  const row = await getDoc<FeePolicy>('settings', 'feePolicy')
-  if (!row) return { ...DEFAULT_FEE_POLICY, termFees: { ...DEFAULT_TERM_FEES } }
+  const row = await getDoc<StoredFeePolicy>('settings', 'feePolicy')
+  if (!row) return { ...DEFAULT_FEE_POLICY, fees: normalizeFeeSchedule(null) }
+  const { termFees, ...rest } = row
   return {
     ...DEFAULT_FEE_POLICY,
-    ...row,
-    termFees: normalizeTermFees(row.termFees),
+    ...rest,
+    fees: normalizeFeeSchedule(row.fees, termFees),
+    monthsPerTerm: normalizeMonthsPerTerm(row.monthsPerTerm),
     id: 'feePolicy',
   }
 }
@@ -81,12 +94,14 @@ export async function getFeePolicyService(session: SessionContext): Promise<FeeP
 
 export async function updateFeePolicyService(
   session: SessionContext,
-  input: Omit<FeePolicy, 'id' | 'updatedAt' | 'updatedBy' | 'termFees'> & {
-    termFees?: FeePolicy['termFees']
+  input: Omit<FeePolicy, 'id' | 'updatedAt' | 'updatedBy' | 'fees' | 'monthsPerTerm'> & {
+    fees?: FeePolicy['fees']
+    monthsPerTerm?: number
   },
 ): Promise<FeePolicy> {
   requirePermission(session, 'settings.manage')
-  const current = input.termFees ? null : await getFeePolicy()
+  const current =
+    input.fees && input.monthsPerTerm !== undefined ? null : await getFeePolicy()
   const row: FeePolicy = {
     id: 'feePolicy',
     currency: input.currency.trim().toUpperCase() || 'USD',
@@ -94,7 +109,8 @@ export async function updateFeePolicyService(
     nextReceiptNumber: Math.max(1, Math.floor(input.nextReceiptNumber)),
     blockResultsWhenFeesOutstanding: Boolean(input.blockResultsWhenFeesOutstanding),
     overdueGraceDays: Math.max(0, Math.min(365, Math.floor(input.overdueGraceDays))),
-    termFees: normalizeTermFees(input.termFees ?? current?.termFees),
+    fees: normalizeFeeSchedule(input.fees ?? current?.fees),
+    monthsPerTerm: normalizeMonthsPerTerm(input.monthsPerTerm ?? current?.monthsPerTerm),
     updatedAt: new Date().toISOString(),
     updatedBy: session.uid,
   }
