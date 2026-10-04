@@ -44,6 +44,7 @@ import type {
   Student,
   StudentClassStats,
   StudentExemption,
+  StudentScholarship,
   StudentPortalAccess,
   StudentPortalBatchRow,
   Subject,
@@ -224,6 +225,18 @@ export const apiStudentService: StudentService = {
       method: 'PATCH',
       body: JSON.stringify({ id: exemptionId }),
     }),
+  listScholarships: (studentId) =>
+    apiFetch<StudentScholarship[]>(`/api/v1/students/${studentId}/scholarships`),
+  createScholarship: (studentId, input) =>
+    apiFetch<StudentScholarship>(`/api/v1/students/${studentId}/scholarships`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  deactivateScholarship: (studentId, scholarshipId) =>
+    apiFetch<StudentScholarship>(
+      `/api/v1/students/${studentId}/scholarships/${scholarshipId}`,
+      { method: 'PATCH' },
+    ),
   getPortalAccess: (studentId) =>
     apiFetch<StudentPortalAccess>(`/api/v1/students/${studentId}/portal-access`, {
       skipCache: true,
@@ -723,8 +736,22 @@ export const apiCatalogService = {
       method: 'PATCH',
       body: JSON.stringify({ markAllRead: true }),
     }),
-  getBooks: async (): Promise<LibraryBook[]> => [],
-  getLoans: async (): Promise<LibraryLoan[]> => [],
+  getBooks: () => apiFetch<LibraryBook[]>('/api/v1/library/books'),
+  createBook: (input: Omit<LibraryBook, 'id' | 'available'>) =>
+    apiFetch<LibraryBook>('/api/v1/library/books', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getLoans: () => apiFetch<LibraryLoan[]>('/api/v1/library/loans'),
+  createLoan: (input: { bookId: string; studentId: string; dueAt: string; borrowerPhone?: string; notes?: string }) =>
+    apiFetch<LibraryLoan>('/api/v1/library/loans', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  returnLoan: (id: string) =>
+    apiFetch<LibraryLoan>(`/api/v1/library/loans/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+    }),
   getInventory: () => apiFetch<InventoryItem[]>('/api/v1/inventory'),
   createInventoryItem: (input: Partial<InventoryItem>) =>
     apiFetch<InventoryItem>('/api/v1/inventory', {

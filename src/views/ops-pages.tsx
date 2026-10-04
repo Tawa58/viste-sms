@@ -16,9 +16,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { catalogService } from '@/services/api'
-import { formatDateTime } from '@/lib/utils'
-import { runMockProcess } from '@/lib/notify'
-import type { Announcement, LibraryBook, LibraryLoan } from '@/types'
+import { studentService } from '@/services/api'
+import { formatDate, formatDateTime } from '@/lib/utils'
+import { notify, runMockProcess } from '@/lib/notify'
+import { useAuth } from '@/contexts/auth-context'
+import type { Announcement, LibraryBook, LibraryLoan, Student } from '@/types'
 
 export { ReportsPage } from '@/views/reports-page'
 export { InventoryPage } from '@/views/inventory-page'
@@ -116,17 +118,131 @@ export function AnnouncementsPage() {
 }
 
 export function LibraryPage() {
+  const { hasPermission } = useAuth()
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [books, setBooks] = useState<LibraryBook[]>([])
   const [loans, setLoans] = useState<LibraryLoan[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [bookOpen, setBookOpen] = useState(false)
+  const [loanOpen, setLoanOpen] = useState(false)
+  const [bookForm, setBookForm] = useState({
+    title: '',
+    author: '',
+    category: '',
+    isbn: '',
+    shelfLocation: '',
+    copies: '1',
+  })
+  const [loanForm, setLoanForm] = useState({
+    bookId: '',
+    studentId: '',
+    dueAt: '',
+    borrowerPhone: '',
+    notes: '',
+  })
+  const canManageLibrary = hasPermission('library.manage')
 
   useEffect(() => {
-    Promise.all([catalogService.getBooks(), catalogService.getLoans()]).then(([b, l]) => {
-      setBooks(b)
-      setLoans(l)
-      setLoading(false)
-    })
+    void Promise.all([
+      catalogService.getBooks(),
+      catalogService.getLoans(),
+      studentService.list(),
+    ])
+      .then(([b, l, s]) => {
+        setBooks(b)
+        setLoans(l)
+        setStudents(s.filter((student) => student.status === 'ACTIVE'))
+      })
+      .catch((error: unknown) => {
+        notify.error(error instanceof Error ? error.message : 'Could not load library records')
+      })
+      .finally(() => setLoading(false))
   }, [])
+
+  async function saveBook() {
+    if (!bookForm.title.trim() || !bookForm.author.trim() || !bookForm.category.trim()) {
+      notify.error('Title, author and category are required')
+      return
+    }
+    setSaving(true)
+    try {
+      const created = await notify.process(
+        () =>
+          catalogService.createBook({
+            title: bookForm.title.trim(),
+            author: bookForm.author.trim(),
+            category: bookForm.category.trim(),
+            isbn: bookForm.isbn.trim() || undefined,
+            shelfLocation: bookForm.shelfLocation.trim() || undefined,
+            copies: Number(bookForm.copies),
+          }),
+        { loading: 'Adding book…', success: 'Book added to the catalogue' },
+      )
+      setBooks((prev) => [created, ...prev])
+      setBookOpen(false)
+      setBookForm({
+        title: '',
+        author: '',
+        category: '',
+        isbn: '',
+        shelfLocation: '',
+        copies: '1',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function issueBook() {
+    if (!loanForm.bookId || !loanForm.studentId || !loanForm.dueAt) {
+      notify.error('Select a book, student and due date')
+      return
+    }
+    setSaving(true)
+    try {
+      const created = await notify.process(
+        () => catalogService.createLoan(loanForm),
+        { loading: 'Issuing book…', success: 'Book issued to student' },
+      )
+      setLoans((prev) => [created, ...prev])
+      setBooks((prev) =>
+        prev.map((book) =>
+          book.id === created.bookId ? { ...book, available: Math.max(0, book.available - 1) } : book,
+        ),
+      )
+      setLoanOpen(false)
+      setLoanForm({
+        bookId: '',
+        studentId: '',
+        dueAt: new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10),
+        borrowerPhone: '',
+        notes: '',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function returnBook(loan: LibraryLoan) {
+    setSaving(true)
+    try {
+      const updated = await notify.process(
+        () => catalogService.returnLoan(loan.id),
+        { loading: 'Recording return…', success: 'Book returned' },
+      )
+      setLoans((prev) => prev.map((row) => (row.id === updated.id ? updated : row)))
+      setBooks((prev) =>
+        prev.map((book) =>
+          book.id === updated.bookId
+            ? { ...book, available: Math.min(book.copies, book.available + 1) }
+            : book,
+        ),
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (loading) return <LoadingState message="Loading library…" />
 
@@ -134,8 +250,26 @@ export function LibraryPage() {
     <div>
       <PageHeader
         title="Library"
-        description="Books, borrowing, returns, and fines."
+        description="Manage the catalogue and track student borrowing and returns."
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Library' }]}
+        actions={
+          canManageLibrary ? (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setBookOpen(true)}>Add book</Button>
+              <Button
+                onClick={() => {
+                  setLoanForm((form) => ({
+                    ...form,
+                    dueAt: new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10),
+                  }))
+                  setLoanOpen(true)
+                }}
+              >
+                Issue book
+              </Button>
+            </div>
+          ) : undefined
+        }
       />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -143,12 +277,21 @@ export function LibraryPage() {
             <CardTitle>Catalogue</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {books.map((b) => (
+            {books.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No books have been added yet.</p>
+            ) : books.map((b) => (
               <div key={b.id} className="rounded-lg border border-border p-3 text-sm">
                 <p className="font-medium">{b.title}</p>
                 <p className="text-muted-foreground">
                   {b.author} · {b.category} · {b.available}/{b.copies} available
                 </p>
+                {[b.shelfLocation, b.isbn].filter(Boolean).length ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {[b.shelfLocation ? `Shelf ${b.shelfLocation}` : '', b.isbn ? `ISBN ${b.isbn}` : '']
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                ) : null}
               </div>
             ))}
           </CardContent>
@@ -163,17 +306,114 @@ export function LibraryPage() {
             ) : (
               loans.map((l) => (
                 <div key={l.id} className="rounded-lg border border-border p-3 text-sm">
-                  <p>Book {l.bookId}</p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="font-medium">
+                      {books.find((book) => book.id === l.bookId)?.title ?? l.bookId}
+                    </p>
+                    {!l.returnedAt && canManageLibrary ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        loading={saving}
+                        onClick={() => void returnBook(l)}
+                      >
+                        Record return
+                      </Button>
+                    ) : null}
+                  </div>
                   <p className="text-muted-foreground">
-                    Student {l.studentId} · due {l.dueAt}
+                    {l.studentName ?? l.studentId}
+                    {l.studentNumber ? ` · ${l.studentNumber}` : ''}
+                    {l.className ? ` · ${l.className}` : ''}
+                    {' · borrowed '}{formatDate(l.borrowedAt)}
+                    {' · due '}{formatDate(l.dueAt)}
+                    {l.returnedAt ? ` · returned ${formatDate(l.returnedAt)}` : ''}
                     {l.fine ? ` · fine ${l.fine}` : ''}
                   </p>
+                  {l.borrowerPhone ? (
+                    <p className="text-xs text-muted-foreground">Contact: {l.borrowerPhone}</p>
+                  ) : null}
+                  {l.notes ? <p className="mt-1 text-xs text-muted-foreground">{l.notes}</p> : null}
                 </div>
               ))
             )}
           </CardContent>
         </Card>
       </div>
+      <Dialog open={bookOpen} onOpenChange={setBookOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add a book</DialogTitle></DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <Label>Title</Label>
+              <Input value={bookForm.title} onChange={(e) => setBookForm((f) => ({ ...f, title: e.target.value }))} />
+            </Field>
+            <Field>
+              <Label>Author</Label>
+              <Input value={bookForm.author} onChange={(e) => setBookForm((f) => ({ ...f, author: e.target.value }))} />
+            </Field>
+            <Field>
+              <Label>Category</Label>
+              <Input value={bookForm.category} onChange={(e) => setBookForm((f) => ({ ...f, category: e.target.value }))} />
+            </Field>
+            <Field>
+              <Label>Copies</Label>
+              <Input type="number" min="1" value={bookForm.copies} onChange={(e) => setBookForm((f) => ({ ...f, copies: e.target.value }))} />
+            </Field>
+            <Field>
+              <Label>ISBN (optional)</Label>
+              <Input value={bookForm.isbn} onChange={(e) => setBookForm((f) => ({ ...f, isbn: e.target.value }))} />
+            </Field>
+            <Field>
+              <Label>Shelf location (optional)</Label>
+              <Input value={bookForm.shelfLocation} onChange={(e) => setBookForm((f) => ({ ...f, shelfLocation: e.target.value }))} />
+            </Field>
+          </div>
+          <Button loading={saving} onClick={() => void saveBook()}>Save book</Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={loanOpen} onOpenChange={setLoanOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Issue a book</DialogTitle></DialogHeader>
+          <div className="grid gap-3">
+            <Field>
+              <Label>Book</Label>
+              <Select value={loanForm.bookId} onChange={(e) => setLoanForm((f) => ({ ...f, bookId: e.target.value }))}>
+                <option value="">Select a book</option>
+                {books.filter((book) => book.available > 0).map((book) => (
+                  <option key={book.id} value={book.id}>{book.title} ({book.available} available)</option>
+                ))}
+              </Select>
+            </Field>
+            <Field>
+              <Label>Student</Label>
+              <Select value={loanForm.studentId} onChange={(e) => setLoanForm((f) => ({ ...f, studentId: e.target.value }))}>
+                <option value="">Select a student</option>
+                {students.map((student) => (
+                  <option key={student.id} value={student.id}>
+                    {student.firstName} {student.lastName} · {student.studentNumber}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <Label>Due date</Label>
+                <Input type="date" value={loanForm.dueAt} onChange={(e) => setLoanForm((f) => ({ ...f, dueAt: e.target.value }))} />
+              </Field>
+              <Field>
+                <Label>Borrower contact (optional)</Label>
+                <Input value={loanForm.borrowerPhone} onChange={(e) => setLoanForm((f) => ({ ...f, borrowerPhone: e.target.value }))} />
+              </Field>
+            </div>
+            <Field>
+              <Label>Notes (optional)</Label>
+              <Textarea value={loanForm.notes} onChange={(e) => setLoanForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            </Field>
+          </div>
+          <Button loading={saving} onClick={() => void issueBook()}>Issue book</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

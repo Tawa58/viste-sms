@@ -610,6 +610,7 @@ export const permissionCatalog = [
   'results.publish',
   'users.manage',
   'roles.manage',
+  'library.manage',
   'settings.manage',
   'audit.read',
 ]
@@ -632,6 +633,10 @@ export const rolePermissions: RolePermission[] = [
   {
     role: 'ACCOUNTANT',
     permissions: ['students.read', 'fees.read', 'fees.create', 'payments.create'],
+  },
+  {
+    role: 'LIBRARIAN',
+    permissions: ['students.read', 'library.manage'],
   },
   {
     role: 'PARENT',

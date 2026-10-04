@@ -6,7 +6,7 @@ import type { SessionContext } from '@/server/auth/session'
 import { requirePermission } from '@/server/authorization/permissions'
 import { assertCanAccessStudent, listAccessibleStudents } from '@/server/authorization/isolation'
 import { badRequest, conflict, notFound } from '@/server/errors'
-import { getDoc, newId, queryCollection } from '@/server/repositories/firestore-repo'
+import { getDoc, newId } from '@/server/repositories/firestore-repo'
 import { ensureCurrentAcademicCalendar } from '@/server/services/academic-calendar-service'
 import { getFeePolicy } from '@/server/services/school-settings-service'
 import { resolveEducationLevelId } from '@/lib/education-levels'
@@ -18,6 +18,7 @@ import {
   monthlyInvoiceId,
   termInvoiceId,
   invoiceBlocksPortal,
+  scholarshipAdjustedFeeAmount,
 } from '@/lib/fees'
 import type { PaymentCreateInput } from '@/server/validators/school'
 import type {
@@ -25,6 +26,7 @@ import type {
   Invoice,
   Payment,
   PaymentPlan,
+  StudentScholarship,
   SchoolClass,
   Student,
   Term,
@@ -35,7 +37,7 @@ export type InvoiceDto = Invoice
 export type PaymentDto = Payment
 
 function invoiceStatus(total: number, paid: number, dueDate: string): Invoice['status'] {
-  if (paid >= total && total > 0) return 'PAID'
+  if (paid >= total) return 'PAID'
   if (paid <= 0) {
     return Date.parse(dueDate) < Date.now() ? 'OVERDUE' : 'OPEN'
   }
@@ -57,6 +59,11 @@ function addDays(isoDate: string, days: number) {
   return d.toISOString().slice(0, 10)
 }
 
+function endOfMonth(isoDate: string) {
+  const [year, month] = isoDate.slice(0, 7).split('-').map(Number)
+  return new Date(Date.UTC(year!, month!, 0)).toISOString().slice(0, 10)
+}
+
 /** The term in progress today; during holidays, the next term to start. */
 export async function resolveBillingTerm(termId?: string): Promise<Term> {
   const calendar = await ensureCurrentAcademicCalendar()
@@ -76,7 +83,10 @@ export async function resolveBillingTerm(termId?: string): Promise<Term> {
 
 type BillOutcome = 'created' | 'updated' | 'unchanged' | 'skipped'
 
-type PlannedInvoice = Pick<Invoice, 'id' | 'number' | 'dueDate' | 'period'>
+type PlannedInvoice = Pick<Invoice, 'id' | 'number' | 'dueDate' | 'period'> & {
+  coverageStart: string
+  coverageEnd: string
+}
 
 /** Monthly-plan invoice ids for a term, up to the largest months-per-term setting. */
 const MAX_MONTHS_PER_TERM = 6
@@ -103,6 +113,8 @@ function plannedInvoices(
         id: termInvoiceId(term.id, student.id),
         number: `INV-${code}-${student.studentNumber}`,
         dueDate: addDays(term.startDate, policy.overdueGraceDays),
+        coverageStart: term.startDate,
+        coverageEnd: term.endDate,
       },
     ]
   }
@@ -119,6 +131,8 @@ function plannedInvoices(
       number: `INV-${code}-${student.studentNumber}-M${m.instalment}`,
       dueDate: m.dueDate,
       period: m.period,
+      coverageStart: `${m.issueDate.slice(0, 7)}-01`,
+      coverageEnd: endOfMonth(m.issueDate),
     }))
 }
 
@@ -142,6 +156,14 @@ async function billStudentForTerm(
   if (currentMonthOnly && chosen !== 'MONTHLY') return 'skipped'
   const planned = plannedInvoices(student, term, policy, chosen, currentMonthOnly)
   if (planned.length === 0) return 'skipped'
+  const grantsSnapshot = await db
+    .collection('studentScholarships')
+    .where('studentId', '==', student.id)
+    .where('active', '==', true)
+    .get()
+  const scholarships = grantsSnapshot.docs.map(
+    (doc) => ({ id: doc.id, ...(doc.data() as Omit<StudentScholarship, 'id'>) }) as StudentScholarship,
+  )
 
   return db.runTransaction(async (tx) => {
     const otherSnaps = currentMonthOnly
@@ -165,15 +187,24 @@ async function billStudentForTerm(
           )
         ).some(Boolean)
     const plan = otherHasPayments ? other : chosen
-    const amount = feeAmountFor(policy.fees, category, plan)
+    const baseAmount = feeAmountFor(policy.fees, category, plan)
     const invoicesToBill = currentMonthOnly
       ? planned
       : plannedInvoices(student, term, policy, plan)
+    const amounts = invoicesToBill.map((period) =>
+      scholarshipAdjustedFeeAmount(
+        baseAmount,
+        period.coverageStart,
+        period.coverageEnd,
+        scholarships,
+      ),
+    )
     const snaps = await tx.getAll(...invoicesToBill.map((p) => invoicesRef.doc(p.id)))
 
     const repriced = new Map<string, number>()
-    for (const snap of snaps) {
-      if (!snap.exists || amount <= 0) continue
+    for (const [index, snap] of snaps.entries()) {
+      const amount = amounts[index]!
+      if (!snap.exists || (baseAmount <= 0 && amount <= 0)) continue
       const existing = snap.data() as Invoice
       if (
         existing.total === amount &&
@@ -194,16 +225,20 @@ async function billStudentForTerm(
       )
     }
 
-    if (amount <= 0) return snaps.some((s) => s.exists) ? 'unchanged' : 'skipped'
+    if (baseAmount <= 0) return snaps.some((s) => s.exists) ? 'unchanged' : 'skipped'
 
     let created = 0
     let updated = 0
     invoicesToBill.forEach((p, i) => {
       const snap = snaps[i]!
+      const amount = amounts[i]!
       if (!snap.exists) {
         if (student.status !== 'ACTIVE') return
         const invoice: Invoice = {
-          ...p,
+          id: p.id,
+          number: p.number,
+          dueDate: p.dueDate,
+          ...(p.period ? { period: p.period } : {}),
           studentId: student.id,
           total: amount,
           paid: 0,
@@ -214,7 +249,6 @@ async function billStudentForTerm(
           plan,
           createdAt: new Date().toISOString(),
         }
-        if (!invoice.period) delete invoice.period
         tx.set(snap.ref, invoice)
         created += 1
         return

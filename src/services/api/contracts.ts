@@ -50,6 +50,18 @@ export interface StudentService {
     },
   ): Promise<import('@/types').StudentExemption>
   deactivateExemption?(studentId: string, exemptionId: string): Promise<import('@/types').StudentExemption>
+  listScholarships?(studentId: string): Promise<import('@/types').StudentScholarship[]>
+  createScholarship?(
+    studentId: string,
+    input: Omit<
+      import('@/types').StudentScholarship,
+      'id' | 'studentId' | 'active' | 'createdBy' | 'createdByName' | 'createdAt'
+    >,
+  ): Promise<import('@/types').StudentScholarship>
+  deactivateScholarship?(
+    studentId: string,
+    scholarshipId: string,
+  ): Promise<import('@/types').StudentScholarship>
   getPortalAccess?(studentId: string): Promise<import('@/types').StudentPortalAccess>
   /** Issue or regenerate this month's portal code (fee-cleared students only). */
   issuePortalCode?(studentId: string): Promise<import('@/types').StudentPortalAccess>

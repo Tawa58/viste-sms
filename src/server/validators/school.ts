@@ -142,6 +142,51 @@ export const exemptionCreateSchema = z.object({
   notes: z.string().max(1000).optional(),
 })
 
+export const scholarshipCreateSchema = z
+  .object({
+    grantor: z.string().trim().min(2).max(160),
+    startDate: isoDateSchema,
+    endDate: isoDateSchema.optional(),
+    feeCoveragePercent: z.number().min(0).max(100).default(100),
+    benefits: z
+      .array(z.enum(['TRANSPORT', 'BOARDING', 'BOOKS', 'UNIFORM', 'MEALS', 'OTHER']))
+      .default([]),
+    otherBenefits: z.string().trim().max(500).optional(),
+    notes: z.string().trim().max(1000).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.endDate && value.endDate < value.startDate) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'End date must be on or after the start date',
+        path: ['endDate'],
+      })
+    }
+  })
+
+export const libraryBookSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  author: z.string().trim().min(1).max(160),
+  category: z.string().trim().min(1).max(100),
+  isbn: z.string().trim().max(32).optional(),
+  publisher: z.string().trim().max(160).optional(),
+  publicationYear: z.number().int().min(1400).max(new Date().getFullYear() + 1).optional(),
+  shelfLocation: z.string().trim().max(100).optional(),
+  notes: z.string().trim().max(1000).optional(),
+  copies: z.number().int().min(1).max(10000),
+})
+
+export const libraryLoanSchema = z.object({
+  bookId: idSchema,
+  studentId: idSchema,
+  dueAt: isoDateSchema,
+  borrowerPhone: z.string().trim().max(40).optional(),
+  notes: z.string().trim().max(1000).optional(),
+})
+
+export type LibraryBookInput = z.infer<typeof libraryBookSchema>
+export type LibraryLoanInput = z.infer<typeof libraryLoanSchema>
+
 export const transferStudentSchema = z.object({
   studentId: idSchema,
   toClassId: idSchema,
@@ -519,4 +564,5 @@ export type SportCreateInput = z.infer<typeof sportCreateSchema>
 export type ClubCreateInput = z.infer<typeof clubCreateSchema>
 export type HouseCreateInput = z.infer<typeof houseCreateSchema>
 export type ExemptionCreateInput = z.infer<typeof exemptionCreateSchema>
+export type ScholarshipCreateInput = z.infer<typeof scholarshipCreateSchema>
 export type TransferStudentInput = z.infer<typeof transferStudentSchema>

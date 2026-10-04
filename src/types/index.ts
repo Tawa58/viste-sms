@@ -424,6 +424,31 @@ export interface StudentExemption {
   active: boolean
 }
 
+export type ScholarshipBenefit =
+  | 'TRANSPORT'
+  | 'BOARDING'
+  | 'BOOKS'
+  | 'UNIFORM'
+  | 'MEALS'
+  | 'OTHER'
+
+/** Student-specific grant; fee coverage applies to the configured fee invoice at any level. */
+export interface StudentScholarship {
+  id: string
+  studentId: string
+  grantor: string
+  startDate: string
+  endDate?: string
+  feeCoveragePercent: number
+  benefits: ScholarshipBenefit[]
+  otherBenefits?: string
+  notes?: string
+  active: boolean
+  createdBy: string
+  createdByName?: string
+  createdAt: string
+}
+
 export interface ClassTransfer {
   id: string
   studentId: string
@@ -819,19 +844,30 @@ export interface LibraryBook {
   title: string
   author: string
   category: string
-  isbn: string
+  isbn?: string
+  publisher?: string
+  publicationYear?: number
+  shelfLocation?: string
+  notes?: string
   copies: number
   available: number
 }
+
+export type LibraryBorrowerType = 'STUDENT' | 'STAFF'
 
 export interface LibraryLoan {
   id: string
   bookId: string
   studentId: string
+  studentName?: string
+  studentNumber?: string
+  className?: string
+  borrowerPhone?: string
   borrowedAt: string
   dueAt: string
   returnedAt?: string
   fine: number
+  notes?: string
 }
 
 /** School asset / inventory stock status. */

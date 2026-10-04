@@ -65,6 +65,7 @@ export function StudentDetailPage() {
   const [clubs, setClubs] = useState<import('@/types').ClubActivity[]>([])
   const [houses, setHouses] = useState<import('@/types').House[]>([])
   const [exemptions, setExemptions] = useState<import('@/types').StudentExemption[]>([])
+  const [scholarships, setScholarships] = useState<import('@/types').StudentScholarship[]>([])
   const [transfers, setTransfers] = useState<import('@/types').ClassTransfer[]>([])
   const [allGuardians, setAllGuardians] = useState<Guardian[]>([])
   const [guardians, setGuardians] = useState<Guardian[]>([])
@@ -75,6 +76,7 @@ export function StudentDetailPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [guardianOpen, setGuardianOpen] = useState(false)
   const [exemptionOpen, setExemptionOpen] = useState(false)
+  const [scholarshipOpen, setScholarshipOpen] = useState(false)
   const [transferOpen, setTransferOpen] = useState(false)
   const [editingGuardian, setEditingGuardian] = useState<Guardian | null>(null)
   const [form, setForm] = useState<StudentFormValues>(studentToFormValues())
@@ -86,6 +88,15 @@ export function StudentDetailPage() {
     reason: '',
     startDate: new Date().toISOString().slice(0, 10),
     endDate: '',
+    notes: '',
+  })
+  const [scholarshipForm, setScholarshipForm] = useState({
+    grantor: '',
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: '',
+    feeCoveragePercent: '100',
+    benefits: [] as import('@/types').ScholarshipBenefit[],
+    otherBenefits: '',
     notes: '',
   })
   const [toClassId, setToClassId] = useState('')
@@ -106,8 +117,9 @@ export function StudentDetailPage() {
       catalogService.getInvoices(),
       catalogService.getMarks(),
       studentService.listExemptions?.(id) ?? Promise.resolve([]),
+      studentService.listScholarships?.(id) ?? Promise.resolve([]),
       studentService.listTransfers?.(id) ?? Promise.resolve([]),
-    ]).then(([s, c, st, sub, sp, cl, ho, g, a, inv, m, ex, xf]) => {
+    ]).then(([s, c, st, sub, sp, cl, ho, g, a, inv, m, ex, sch, xf]) => {
       setStudent(s)
       setClasses(c)
       setStreams(st)
@@ -121,6 +133,7 @@ export function StudentDetailPage() {
       setInvoices(inv.filter((x) => x.studentId === id))
       setMarks(m.filter((x) => x.studentId === id))
       setExemptions(ex)
+      setScholarships(sch)
       setTransfers(xf)
       setLoading(false)
     })
@@ -276,6 +289,48 @@ export function StudentDetailPage() {
     }
   }
 
+  async function saveScholarship() {
+    if (!student || !studentService.createScholarship) return
+    if (!scholarshipForm.grantor.trim() || !scholarshipForm.startDate) {
+      notify.error('Grantor and start date are required')
+      return
+    }
+    setSaving(true)
+    try {
+      const created = await notify.process(
+        () =>
+          studentService.createScholarship!(student.id, {
+            grantor: scholarshipForm.grantor.trim(),
+            startDate: scholarshipForm.startDate,
+            endDate: scholarshipForm.endDate || undefined,
+            feeCoveragePercent: Number(scholarshipForm.feeCoveragePercent),
+            benefits: scholarshipForm.benefits,
+            otherBenefits: scholarshipForm.otherBenefits.trim() || undefined,
+            notes: scholarshipForm.notes.trim() || undefined,
+          }),
+        { loading: 'Recording scholarship…', success: 'Scholarship recorded' },
+      )
+      setScholarships((prev) => [created, ...prev])
+      setScholarshipOpen(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deactivateScholarship(grant: import('@/types').StudentScholarship) {
+    if (!student || !studentService.deactivateScholarship) return
+    setSaving(true)
+    try {
+      const updated = await notify.process(
+        () => studentService.deactivateScholarship!(student.id, grant.id),
+        { loading: 'Ending scholarship…', success: 'Scholarship ended' },
+      )
+      setScholarships((prev) => prev.map((row) => (row.id === updated.id ? updated : row)))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function confirmTransfer() {
     if (!student || !toClassId || !studentService.transfer) return
     setSaving(true)
@@ -386,6 +441,23 @@ export function StudentDetailPage() {
               <>
                 <Button variant="outline" onClick={() => setExemptionOpen(true)}>
                   Add exemption
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setScholarshipForm({
+                      grantor: '',
+                      startDate: new Date().toISOString().slice(0, 10),
+                      endDate: '',
+                      feeCoveragePercent: '100',
+                      benefits: [],
+                      otherBenefits: '',
+                      notes: '',
+                    })
+                    setScholarshipOpen(true)
+                  }}
+                >
+                  Add scholarship
                 </Button>
                 <Button
                   variant="outline"
@@ -591,6 +663,64 @@ export function StudentDetailPage() {
                       </p>
                     </li>
                   ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2 border-t border-border/60 pt-4">
+            <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Scholarships & benefits
+            </h3>
+            {scholarships.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No scholarships recorded.</p>
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {scholarships.map((grant) => {
+                  const today = new Date().toISOString().slice(0, 10)
+                  const inPeriod =
+                    grant.active && grant.startDate <= today && (!grant.endDate || grant.endDate >= today)
+                  const benefitLabels: Record<import('@/types').ScholarshipBenefit, string> = {
+                    TRANSPORT: 'Transport',
+                    BOARDING: 'Boarding',
+                    BOOKS: 'Books',
+                    UNIFORM: 'Uniform',
+                    MEALS: 'Meals',
+                    OTHER: 'Other',
+                  }
+                  return (
+                    <li key={grant.id} className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm">
+                      <div>
+                        <p className="font-medium">{grant.grantor}</p>
+                        <p className="text-muted-foreground">
+                          Fees covered: {grant.feeCoveragePercent}%
+                          {grant.benefits.length
+                            ? ` · ${grant.benefits.map((benefit) => benefitLabels[benefit]).join(', ')}`
+                            : ''}
+                          {grant.otherBenefits ? ` · ${grant.otherBenefits}` : ''}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(grant.startDate)}
+                          {grant.endDate ? ` – ${formatDate(grant.endDate)}` : ' – No end date'}
+                          {grant.createdByName ? ` · recorded by ${grant.createdByName}` : ''}
+                          {!grant.active ? ' · Ended' : !inPeriod ? ' · Outside period' : ' · Active'}
+                        </p>
+                        {grant.notes ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{grant.notes}</p>
+                        ) : null}
+                      </div>
+                      {fullAccess && grant.active ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          loading={saving}
+                          onClick={() => void deactivateScholarship(grant)}
+                        >
+                          End scholarship
+                        </Button>
+                      ) : null}
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </section>
@@ -863,6 +993,114 @@ export function StudentDetailPage() {
           <Button loading={saving} onClick={() => void saveExemption()}>
             Save exemption
           </Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={scholarshipOpen} onOpenChange={setScholarshipOpen}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Record scholarship</DialogTitle>
+            <DialogDescription>
+              Set the grantor, effective dates, fee coverage, and any additional support.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <Field>
+              <Label>Grantor / sponsor</Label>
+              <Input
+                value={scholarshipForm.grantor}
+                onChange={(e) => setScholarshipForm((f) => ({ ...f, grantor: e.target.value }))}
+                placeholder="Organization or person"
+              />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <Label>Start date</Label>
+                <Input
+                  type="date"
+                  value={scholarshipForm.startDate}
+                  onChange={(e) => setScholarshipForm((f) => ({ ...f, startDate: e.target.value }))}
+                />
+              </Field>
+              <Field>
+                <Label>End date (optional)</Label>
+                <Input
+                  type="date"
+                  value={scholarshipForm.endDate}
+                  onChange={(e) => setScholarshipForm((f) => ({ ...f, endDate: e.target.value }))}
+                />
+              </Field>
+            </div>
+            <Field>
+              <Label>School-fee coverage (%)</Label>
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                value={scholarshipForm.feeCoveragePercent}
+                onChange={(e) =>
+                  setScholarshipForm((f) => ({ ...f, feeCoveragePercent: e.target.value }))
+                }
+              />
+            </Field>
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Other benefits</legend>
+              <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+                {(
+                  [
+                    ['TRANSPORT', 'Transport'],
+                    ['BOARDING', 'Boarding'],
+                    ['BOOKS', 'Books'],
+                    ['UNIFORM', 'Uniform'],
+                    ['MEALS', 'Meals'],
+                    ['OTHER', 'Other'],
+                  ] as const
+                ).map(([benefit, label]) => (
+                  <label key={benefit} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={scholarshipForm.benefits.includes(benefit)}
+                      onChange={(e) =>
+                        setScholarshipForm((f) => ({
+                          ...f,
+                          benefits: e.target.checked
+                            ? [...f.benefits, benefit]
+                            : f.benefits.filter((item) => item !== benefit),
+                        }))
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <Field>
+              <Label>Other benefit details</Label>
+              <Input
+                value={scholarshipForm.otherBenefits}
+                onChange={(e) =>
+                  setScholarshipForm((f) => ({ ...f, otherBenefits: e.target.value }))
+                }
+                placeholder="Describe any additional support"
+              />
+            </Field>
+            <Field>
+              <Label>Notes</Label>
+              <Textarea
+                value={scholarshipForm.notes}
+                onChange={(e) => setScholarshipForm((f) => ({ ...f, notes: e.target.value }))}
+                rows={2}
+              />
+            </Field>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setScholarshipOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button loading={saving} onClick={() => void saveScholarship()}>
+              Save scholarship
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

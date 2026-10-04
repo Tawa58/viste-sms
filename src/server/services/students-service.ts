@@ -10,6 +10,7 @@ import {
 } from '@/server/authorization/isolation'
 import { badRequest, notFound } from '@/server/errors'
 import { resolveEducationLevelId } from '@/lib/education-levels'
+import { syncStudentTermInvoice } from '@/server/services/finance-service'
 import {
   enrollmentYearFromDate,
   formatVhsNumber,
@@ -18,9 +19,9 @@ import {
 import { getAdminDb } from '@/lib/firebase/admin'
 import { getDoc, newId, queryCollection, setDoc, deleteDoc } from '@/server/repositories/firestore-repo'
 import { getDefaultStreamForClass } from '@/server/services/classes-service'
-import { syncStudentTermInvoice } from '@/server/services/finance-service'
 import type {
   ExemptionCreateInput,
+  ScholarshipCreateInput,
   StudentCreateInput,
   StudentUpdateInput,
   TransferStudentInput,
@@ -31,6 +32,7 @@ import type {
   SchoolClass,
   Student,
   StudentExemption,
+  StudentScholarship,
 } from '@/types'
 
 export type StudentDto = Student
@@ -517,6 +519,85 @@ export async function deactivateExemption(
   return next
 }
 
+export async function createStudentScholarship(
+  session: SessionContext,
+  studentId: string,
+  input: ScholarshipCreateInput,
+  requestId?: string,
+): Promise<StudentScholarship> {
+  requirePermission(session, 'students.exempt')
+  const student = await assertCanAccessStudent(session, studentId)
+  const id = newId('sch')
+  const row: StudentScholarship = {
+    id,
+    studentId,
+    grantor: input.grantor.trim(),
+    startDate: input.startDate,
+    endDate: input.endDate,
+    feeCoveragePercent: input.feeCoveragePercent,
+    benefits: input.benefits,
+    otherBenefits: emptyToUndefined(input.otherBenefits),
+    notes: emptyToUndefined(input.notes),
+    active: true,
+    createdBy: session.uid,
+    createdByName: session.profile.name || session.profile.email || session.uid,
+    createdAt: new Date().toISOString(),
+  }
+  await setDoc('studentScholarships', id, { ...row })
+  await writeAuditLog({
+    actorId: session.uid,
+    actorRole: session.role,
+    action: 'student.scholarship.create',
+    entityType: 'studentScholarships',
+    entityId: id,
+    requestId,
+    metadata: {
+      studentId,
+      grantor: row.grantor,
+      feeCoveragePercent: row.feeCoveragePercent,
+      startDate: row.startDate,
+      endDate: row.endDate,
+    },
+  })
+  await syncStudentTermInvoice(student)
+  return row
+}
+
+export async function listStudentScholarships(
+  session: SessionContext,
+  studentId: string,
+): Promise<StudentScholarship[]> {
+  requirePermission(session, 'students.read')
+  await assertCanAccessStudent(session, studentId)
+  const all = await queryCollection<StudentScholarship>('studentScholarships', { limit: 500 })
+  return all
+    .filter((scholarship) => scholarship.studentId === studentId)
+    .sort((a, b) => b.startDate.localeCompare(a.startDate))
+}
+
+export async function deactivateStudentScholarship(
+  session: SessionContext,
+  scholarshipId: string,
+  requestId?: string,
+): Promise<StudentScholarship> {
+  requirePermission(session, 'students.exempt')
+  const current = await getDoc<StudentScholarship>('studentScholarships', scholarshipId)
+  if (!current) throw notFound('Scholarship not found')
+  const student = await assertCanAccessStudent(session, current.studentId)
+  const next = { ...current, active: false }
+  await setDoc('studentScholarships', scholarshipId, next)
+  await writeAuditLog({
+    actorId: session.uid,
+    actorRole: session.role,
+    action: 'student.scholarship.deactivate',
+    entityType: 'studentScholarships',
+    entityId: scholarshipId,
+    requestId,
+  })
+  await syncStudentTermInvoice(student)
+  return next
+}
+
 export const listStudentsService = listStudents
 export const getStudentService = getStudent
 export const createStudentService = createStudent
@@ -528,5 +609,8 @@ export const listStudentTransfersService = listStudentTransfers
 export const createExemptionService = createExemption
 export const listStudentExemptionsService = listStudentExemptions
 export const deactivateExemptionService = deactivateExemption
+export const createStudentScholarshipService = createStudentScholarship
+export const listStudentScholarshipsService = listStudentScholarships
+export const deactivateStudentScholarshipService = deactivateStudentScholarship
 
 export { listStaffService } from '@/server/services/staff-service'

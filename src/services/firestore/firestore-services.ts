@@ -38,6 +38,24 @@ class FirestoreStudentService implements StudentService {
     const { apiStudentService } = await import('@/services/api/server-api-services')
     return apiStudentService.remove!(id)
   }
+  async listScholarships(studentId: string) {
+    const { apiStudentService } = await import('@/services/api/server-api-services')
+    return apiStudentService.listScholarships!(studentId)
+  }
+  async createScholarship(
+    studentId: string,
+    input: Omit<
+      import('@/types').StudentScholarship,
+      'id' | 'studentId' | 'active' | 'createdBy' | 'createdByName' | 'createdAt'
+    >,
+  ) {
+    const { apiStudentService } = await import('@/services/api/server-api-services')
+    return apiStudentService.createScholarship!(studentId, input)
+  }
+  async deactivateScholarship(studentId: string, scholarshipId: string) {
+    const { apiStudentService } = await import('@/services/api/server-api-services')
+    return apiStudentService.deactivateScholarship!(studentId, scholarshipId)
+  }
 }
 
 class FirestoreDashboardService implements DashboardService {
@@ -332,10 +350,30 @@ export const firestoreCatalogService = {
     return apiCatalogService.markAllNotificationsRead()
   },
   async getBooks() {
-    return []
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.getBooks()
+  },
+  async createBook(input: Omit<import('@/types').LibraryBook, 'id' | 'available'>) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.createBook(input)
   },
   async getLoans() {
-    return []
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.getLoans()
+  },
+  async createLoan(input: {
+    bookId: string
+    studentId: string
+    dueAt: string
+    borrowerPhone?: string
+    notes?: string
+  }) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.createLoan(input)
+  },
+  async returnLoan(id: string) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.returnLoan(id)
   },
   async getInventory() {
     const { apiCatalogService } = await import('@/services/api/server-api-services')

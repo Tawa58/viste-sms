@@ -6,6 +6,7 @@ import type {
   FeeSchedule,
   LegacyFeeCategory,
   PaymentPlan,
+  StudentScholarship,
   StudentResidency,
 } from '@/types'
 
@@ -141,6 +142,28 @@ export function normalizeMonthsPerTerm(value: unknown) {
 export function feeAmountFor(schedule: FeeSchedule, category: FeeCategory, plan: PaymentPlan) {
   const amounts = schedule[category]
   return (plan === 'MONTHLY' ? amounts?.monthly : amounts?.termly) ?? 0
+}
+
+export function scholarshipAdjustedFeeAmount(
+  amount: number,
+  periodStart: string,
+  periodEnd: string,
+  scholarships: Pick<StudentScholarship, 'startDate' | 'endDate' | 'feeCoveragePercent'>[],
+) {
+  if (amount <= 0 || scholarships.length === 0) return amount
+  const start = new Date(`${periodStart.slice(0, 10)}T00:00:00Z`)
+  const end = new Date(`${periodEnd.slice(0, 10)}T00:00:00Z`)
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1
+  if (days <= 0) return amount
+  let coveredPercentDays = 0
+  for (let day = start.getTime(); day <= end.getTime(); day += 86_400_000) {
+    const date = new Date(day).toISOString().slice(0, 10)
+    const coverage = scholarships
+      .filter((grant) => grant.startDate <= date && (!grant.endDate || grant.endDate >= date))
+      .reduce((total, grant) => total + grant.feeCoveragePercent, 0)
+    coveredPercentDays += Math.min(100, coverage)
+  }
+  return Math.round(amount * (1 - coveredPercentDays / (days * 100)) * 100) / 100
 }
 
 /** Future monthly instalments don't block access; current instalments and due invoices do. */

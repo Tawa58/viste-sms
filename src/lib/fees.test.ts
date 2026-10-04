@@ -7,6 +7,7 @@ import {
   monthlyInvoiceId,
   normalizeFeeSchedule,
   normalizeMonthsPerTerm,
+  scholarshipAdjustedFeeAmount,
   termInvoiceId,
 } from '@/lib/fees'
 
@@ -58,6 +59,34 @@ describe('feeAmountFor', () => {
     const schedule = normalizeFeeSchedule({ PRIMARY_DAY: { termly: 300, monthly: 110 } })
     expect(feeAmountFor(schedule, 'PRIMARY_DAY', 'TERMLY')).toBe(300)
     expect(feeAmountFor(schedule, 'PRIMARY_DAY', 'MONTHLY')).toBe(110)
+  })
+})
+
+describe('scholarshipAdjustedFeeAmount', () => {
+  it('applies the grant percentage for the covered invoice period', () => {
+    expect(
+      scholarshipAdjustedFeeAmount(300, '2027-01-01', '2027-01-31', [
+        { startDate: '2027-01-01', endDate: '2027-01-31', feeCoveragePercent: 50 },
+      ]),
+    ).toBe(150)
+  })
+
+  it('prorates a scholarship by the dates it overlaps the billing period', () => {
+    expect(
+      scholarshipAdjustedFeeAmount(310, '2027-01-01', '2027-01-31', [
+        { startDate: '2027-01-17', endDate: '2027-01-31', feeCoveragePercent: 100 },
+      ]),
+    ).toBe(160)
+  })
+
+  it('caps overlapping grants at full fee coverage and ignores out-of-period grants', () => {
+    expect(
+      scholarshipAdjustedFeeAmount(100, '2027-01-01', '2027-01-31', [
+        { startDate: '2027-01-01', feeCoveragePercent: 70 },
+        { startDate: '2027-01-01', feeCoveragePercent: 60 },
+        { startDate: '2026-12-01', endDate: '2026-12-31', feeCoveragePercent: 100 },
+      ]),
+    ).toBe(0)
   })
 })
 

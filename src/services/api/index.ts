@@ -60,6 +60,7 @@ import type {
   StaffLoginCredential,
   Stream,
   Student,
+  StudentScholarship,
   Subject,
   Term,
   AcademicYear,
@@ -85,6 +86,7 @@ import {
   apiStudentService,
   apiSubjectAdminService,
 } from '@/services/api/server-api-services'
+
 import { readPublicEnv } from '@/lib/env'
 import {
   DEFAULT_MONTHS_PER_TERM,
@@ -93,7 +95,10 @@ import {
   monthlyInstalments,
   monthlyInvoiceId,
   normalizeFeeSchedule,
+  scholarshipAdjustedFeeAmount,
 } from '@/lib/fees'
+
+const mockScholarships: StudentScholarship[] = []
 
 let mockFeePolicy: import('@/types').FeePolicy = {
   id: 'feePolicy',
@@ -381,6 +386,40 @@ class MockStudentService implements StudentService {
       guardian.studentIds = guardian.studentIds.filter((sid) => sid !== id)
     }
     return mockRequest({ deleted: true as const, id }, 200)
+  }
+  listScholarships(studentId: string) {
+    return mockRequest(
+      mockScholarships
+        .filter((grant) => grant.studentId === studentId)
+        .sort((a, b) => b.startDate.localeCompare(a.startDate)),
+    )
+  }
+  async createScholarship(
+    studentId: string,
+    input: Omit<
+      StudentScholarship,
+      'id' | 'studentId' | 'active' | 'createdBy' | 'createdByName' | 'createdAt'
+    >,
+  ) {
+    const row: StudentScholarship = {
+      ...input,
+      id: `sch-${Date.now()}`,
+      studentId,
+      active: true,
+      createdBy: 'demo-user',
+      createdByName: 'Demo user',
+      createdAt: new Date().toISOString(),
+    }
+    mockScholarships.unshift(row)
+    return mockRequest(row)
+  }
+  async deactivateScholarship(studentId: string, scholarshipId: string) {
+    const row = mockScholarships.find(
+      (grant) => grant.id === scholarshipId && grant.studentId === studentId,
+    )
+    if (!row) throw new Error('Scholarship not found')
+    row.active = false
+    return mockRequest(row)
   }
 }
 
@@ -1015,8 +1054,23 @@ const mockCatalogService = {
     const klass = classes.find((row) => row.id === student.classId)
     const level = student.educationLevelId || klass?.educationLevelId || klass?.level
     const category = feeCategoryFor(student.residency, level)
-    const amount = feeAmountFor(mockFeePolicy.fees!, category, 'MONTHLY')
-    if (amount <= 0) throw new Error('Set the monthly fee amount in Settings before billing')
+    const baseAmount = feeAmountFor(mockFeePolicy.fees!, category, 'MONTHLY')
+    if (baseAmount <= 0) throw new Error('Set the monthly fee amount in Settings before billing')
+    const [periodYear, periodMonth] = installment.issueDate.slice(0, 7).split('-').map(Number)
+    const periodStart = `${installment.issueDate.slice(0, 7)}-01`
+    const periodEnd = new Date(Date.UTC(periodYear!, periodMonth!, 0)).toISOString().slice(0, 10)
+    const amount = scholarshipAdjustedFeeAmount(
+      baseAmount,
+      periodStart,
+      periodEnd,
+      mockScholarships.filter(
+        (grant) =>
+          grant.studentId === student.id &&
+          grant.active &&
+          grant.startDate <= periodEnd &&
+          (!grant.endDate || grant.endDate >= periodStart),
+      ),
+    )
     const id = monthlyInvoiceId(term.id, student.id, installment.instalment)
     const existing = invoices.find((row) => row.id === id)
     if (existing) {
@@ -1044,7 +1098,7 @@ const mockCatalogService = {
       dueDate: installment.dueDate,
       total: amount,
       paid: 0,
-      status: 'OPEN',
+      status: amount === 0 ? 'PAID' : 'OPEN',
       termId: term.id,
       termName: term.name,
       category,
@@ -1118,7 +1172,55 @@ const mockCatalogService = {
     }),
   markAllNotificationsRead: async () => mockRequest({ marked: 0 }),
   getBooks: (): Promise<LibraryBook[]> => mockRequest(libraryBooks),
+  createBook: async (input: Omit<LibraryBook, 'id' | 'available'>): Promise<LibraryBook> => {
+    const row: LibraryBook = {
+      ...input,
+      id: `bk-${Date.now()}`,
+      available: input.copies,
+    }
+    libraryBooks.unshift(row)
+    return mockRequest(row)
+  },
   getLoans: (): Promise<LibraryLoan[]> => mockRequest(libraryLoans),
+  createLoan: async (input: {
+    bookId: string
+    studentId: string
+    dueAt: string
+    borrowerPhone?: string
+    notes?: string
+  }): Promise<LibraryLoan> => {
+    const book = libraryBooks.find((row) => row.id === input.bookId)
+    const student = students.find((row) => row.id === input.studentId)
+    if (!book) throw new Error('Book not found')
+    if (!student) throw new Error('Student not found')
+    if (student.status !== 'ACTIVE') throw new Error('Only active students can borrow books')
+    if (book.available < 1) throw new Error('No copies of this book are available')
+    book.available -= 1
+    const row: LibraryLoan = {
+      id: `loan-${Date.now()}`,
+      bookId: book.id,
+      studentId: student.id,
+      studentName: `${student.firstName} ${student.lastName}`.trim(),
+      studentNumber: student.studentNumber,
+      className: classes.find((cls) => cls.id === student.classId)?.name ?? student.classId,
+      borrowerPhone: input.borrowerPhone || student.phone,
+      borrowedAt: new Date().toISOString(),
+      dueAt: input.dueAt,
+      fine: 0,
+      notes: input.notes,
+    }
+    libraryLoans.unshift(row)
+    return mockRequest(row)
+  },
+  returnLoan: async (id: string): Promise<LibraryLoan> => {
+    const loan = libraryLoans.find((row) => row.id === id)
+    if (!loan) throw new Error('Loan not found')
+    if (loan.returnedAt) throw new Error('Book has already been returned')
+    loan.returnedAt = new Date().toISOString()
+    const book = libraryBooks.find((row) => row.id === loan.bookId)
+    if (book) book.available = Math.min(book.copies, book.available + 1)
+    return mockRequest(loan)
+  },
   getInventory: (): Promise<InventoryItem[]> => mockRequest([...inventoryItems]),
   createInventoryItem: async (input: Partial<InventoryItem>) => {
     const row: InventoryItem = {

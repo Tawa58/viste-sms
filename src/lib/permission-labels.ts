@@ -31,6 +31,10 @@ export const PERMISSION_GROUPS: { label: string; permissions: string[] }[] = [
     ],
   },
   {
+    label: 'Library',
+    permissions: ['library.manage'],
+  },
+  {
     label: 'Attendance',
     permissions: ['attendance.read', 'attendance.create', 'attendance.update'],
   },
