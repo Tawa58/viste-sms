@@ -43,7 +43,8 @@ import { FadeIn } from '@/components/shared/page-transition'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/contexts/auth-context'
-import { catalogService, dashboardService } from '@/services/api'
+import { catalogService, dashboardService, USE_SERVER_API } from '@/services/api'
+import { USE_MOCK_API } from '@/services/api/client'
 import { notify } from '@/lib/notify'
 import { canAccessPath, hasFullConsoleAccess } from '@/lib/roles'
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
@@ -189,8 +190,12 @@ export function DashboardPage() {
           setAnnouncements([])
         }
         notify.error(
-          'Firestore blocked',
-          'Open Firebase Console → Firestore → Rules and publish the rules from firestore.rules (allow read, write: if true). Also enable Anonymous sign-in under Authentication.',
+          'Could not load dashboard',
+          USE_SERVER_API || USE_MOCK_API
+            ? err instanceof Error
+              ? err.message
+              : 'Check your sign-in and server logs, then try again.'
+            : 'Client Firestore mode is enabled, but the security rules intentionally block direct data access. Set NEXT_PUBLIC_USE_CLIENT_FIRESTORE=false to use the server API. Do not open the Firestore rules.',
         )
       } finally {
         if (mounted) setLoading(false)

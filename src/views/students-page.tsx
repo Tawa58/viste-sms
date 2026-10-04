@@ -13,6 +13,8 @@ import { currentPortalMonth, formatPortalMonth } from '@/lib/student-portal'
 import { notify } from '@/lib/notify'
 import { canManageStudents } from '@/lib/roles'
 import { useAuth } from '@/contexts/auth-context'
+import { USE_SERVER_API } from '@/services/api'
+import { USE_MOCK_API } from '@/services/api/client'
 import { PageHeader } from '@/components/shared/page-header'
 import { SearchInput } from '@/components/shared/search-input'
 import { Pagination } from '@/components/shared/pagination'
@@ -142,7 +144,11 @@ export function StudentsPage() {
         console.error(err)
         notify.error(
           'Could not load students',
-          'Firestore rules are blocking reads. Publish open rules from firestore.rules in the Firebase Console.',
+          USE_SERVER_API || USE_MOCK_API
+            ? err instanceof Error
+              ? err.message
+              : 'Check your sign-in and server logs, then try again.'
+            : 'Client Firestore mode is enabled, but the security rules intentionally block direct data access. Set NEXT_PUBLIC_USE_CLIENT_FIRESTORE=false to use the server API. Do not open the Firestore rules.',
         )
       })
       .finally(() => {

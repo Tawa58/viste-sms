@@ -5,7 +5,7 @@
  * NOT USED: Firebase Storage — never import or call getStorage()
  */
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
-import { getAuth, onAuthStateChanged, signInAnonymously, type Auth } from 'firebase/auth'
+import { getAuth, onAuthStateChanged, type Auth } from 'firebase/auth'
 import { getFirestore, type Firestore } from 'firebase/firestore'
 import { getDatabase, type Database } from 'firebase/database'
 import { readPublicEnv } from '@/lib/env'
@@ -57,29 +57,21 @@ export function getRealtimeDb(): Database {
   return rtdb
 }
 
-/**
- * Ensures Firebase Auth is ready. Prefer the signed-in school user;
- * fall back to anonymous only for catalog bootstrap when signed out.
- */
+/** Wait for Firebase Auth to restore the persisted school-user session. */
 export function ensureFirebaseAuth(): Promise<void> {
   if (!authReady) {
     authReady = new Promise((resolve) => {
       const a = getFirebaseAuth()
       const unsub = onAuthStateChanged(
         a,
-        async (user) => {
+        () => {
           unsub()
-          try {
-            if (!user) await signInAnonymously(a)
-          } catch (err) {
-            console.warn(
-              '[firebase] Anonymous Auth unavailable — enable Email/Password + Anonymous, or open Firestore rules.',
-              err,
-            )
-          }
           resolve()
         },
-        () => resolve(),
+        () => {
+          unsub()
+          resolve()
+        },
       )
     })
   }
