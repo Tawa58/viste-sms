@@ -86,7 +86,14 @@ import {
   apiSubjectAdminService,
 } from '@/services/api/server-api-services'
 import { readPublicEnv } from '@/lib/env'
-import { DEFAULT_MONTHS_PER_TERM, normalizeFeeSchedule } from '@/lib/fees'
+import {
+  DEFAULT_MONTHS_PER_TERM,
+  feeAmountFor,
+  feeCategoryFor,
+  monthlyInstalments,
+  monthlyInvoiceId,
+  normalizeFeeSchedule,
+} from '@/lib/fees'
 
 let mockFeePolicy: import('@/types').FeePolicy = {
   id: 'feePolicy',
@@ -693,7 +700,8 @@ const mockCatalogService = {
   submitClassSubjectMarks: async (input: {
     classId: string
     subjectId: string
-    periodType: 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
+    periodType: 'DAILY' | 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
+    date?: string
     month?: string
     weekOf?: string
     termId?: string
@@ -712,7 +720,9 @@ const mockCatalogService = {
     const assessmentId =
       input.periodType === 'MONTHLY'
         ? `as_monthly_${input.classId}_${input.subjectId}_${input.month}`
-        : input.periodType === 'WEEKLY'
+        : input.periodType === 'DAILY'
+          ? `as_daily_${input.classId}_${input.subjectId}_${input.date}`
+          : input.periodType === 'WEEKLY'
           ? `as_weekly_${input.classId}_${input.subjectId}_${input.weekOf}`
           : input.periodType === 'MOCK'
             ? `as_mock_${input.classId}_${input.subjectId}_${input.month ?? input.termId ?? 'mock'}`
@@ -720,7 +730,9 @@ const mockCatalogService = {
     const assessmentName =
       input.periodType === 'MONTHLY'
         ? `Monthly ${input.month}`
-        : input.periodType === 'WEEKLY'
+        : input.periodType === 'DAILY'
+          ? `Daily ${input.date}`
+          : input.periodType === 'WEEKLY'
           ? `Weekly ${input.weekOf}`
           : input.periodType === 'MOCK'
             ? `Mock ${input.month ?? input.termId ?? ''}`.trim()
@@ -736,6 +748,9 @@ const mockCatalogService = {
       status,
       classId: input.classId,
       month: input.month,
+      ...(input.periodType === 'DAILY'
+        ? { date: input.date, month: input.date?.slice(0, 7) }
+        : {}),
       weekOf: input.weekOf,
     }
     assessments.unshift(assessment)
@@ -776,6 +791,34 @@ const mockCatalogService = {
   },
   getGradingScale: async () =>
     mockRequest({
+      ECD: {
+        id: 'ECD' as const,
+        track: 'ECD' as const,
+        label: 'ECD',
+        passMark: 50,
+        bands: [
+          { grade: 'A', minPercent: 80, maxPercent: 100 },
+          { grade: 'B', minPercent: 70, maxPercent: 79 },
+          { grade: 'C', minPercent: 60, maxPercent: 69 },
+          { grade: 'D', minPercent: 50, maxPercent: 59 },
+          { grade: 'E', minPercent: 40, maxPercent: 49 },
+          { grade: 'U', minPercent: 0, maxPercent: 39 },
+        ],
+      },
+      PRIMARY: {
+        id: 'PRIMARY' as const,
+        track: 'PRIMARY' as const,
+        label: 'Grades 1–7',
+        passMark: 50,
+        bands: [
+          { grade: 'A', minPercent: 80, maxPercent: 100 },
+          { grade: 'B', minPercent: 70, maxPercent: 79 },
+          { grade: 'C', minPercent: 60, maxPercent: 69 },
+          { grade: 'D', minPercent: 50, maxPercent: 59 },
+          { grade: 'E', minPercent: 40, maxPercent: 49 },
+          { grade: 'U', minPercent: 0, maxPercent: 39 },
+        ],
+      },
       FORM_1_4: {
         id: 'FORM_1_4' as const,
         track: 'FORM_1_4' as const,
@@ -811,6 +854,34 @@ const mockCatalogService = {
     bands: { grade: string; minPercent: number; maxPercent: number }[]
   }) => {
     const base = {
+      ECD: {
+        id: 'ECD' as const,
+        track: 'ECD' as const,
+        label: 'ECD',
+        passMark: 50,
+        bands: [
+          { grade: 'A', minPercent: 80, maxPercent: 100 },
+          { grade: 'B', minPercent: 70, maxPercent: 79 },
+          { grade: 'C', minPercent: 60, maxPercent: 69 },
+          { grade: 'D', minPercent: 50, maxPercent: 59 },
+          { grade: 'E', minPercent: 40, maxPercent: 49 },
+          { grade: 'U', minPercent: 0, maxPercent: 39 },
+        ],
+      },
+      PRIMARY: {
+        id: 'PRIMARY' as const,
+        track: 'PRIMARY' as const,
+        label: 'Grades 1–7',
+        passMark: 50,
+        bands: [
+          { grade: 'A', minPercent: 80, maxPercent: 100 },
+          { grade: 'B', minPercent: 70, maxPercent: 79 },
+          { grade: 'C', minPercent: 60, maxPercent: 69 },
+          { grade: 'D', minPercent: 50, maxPercent: 59 },
+          { grade: 'E', minPercent: 40, maxPercent: 49 },
+          { grade: 'U', minPercent: 0, maxPercent: 39 },
+        ],
+      },
       FORM_1_4: {
         id: 'FORM_1_4' as const,
         track: 'FORM_1_4' as const,
@@ -845,7 +916,12 @@ const mockCatalogService = {
       [input.track]: {
         id: input.track,
         track: input.track,
-        label: input.track === 'FORM_5_6' ? 'Form 5–6 (A-Level)' : 'Form 1–4 (O-Level)',
+        label: {
+          ECD: 'ECD',
+          PRIMARY: 'Grades 1–7',
+          FORM_1_4: 'Form 1–4 (O-Level)',
+          FORM_5_6: 'Form 5–6 (A-Level)',
+        }[input.track],
         passMark: input.passMark,
         bands: input.bands,
       },
@@ -909,6 +985,82 @@ const mockCatalogService = {
       unchanged: invoices.length,
       skipped: 0,
     }),
+  billCurrentMonth: async (studentId: string) => {
+    const student = students.find((row) => row.id === studentId)
+    if (!student) throw new Error('Student not found')
+    if (student.status !== 'ACTIVE') throw new Error('Only active students can be billed')
+    if (student.paymentPlan !== 'MONTHLY') {
+      throw new Error('Current-month billing is only available for students on the monthly plan')
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    const term =
+      terms.find((row) => row.startDate <= today && today <= row.endDate) ??
+      terms.find((row) => row.startDate > today)
+    if (!term) throw new Error('No current or upcoming term is configured')
+    const installment = monthlyInstalments(
+      term.startDate,
+      mockFeePolicy.monthsPerTerm,
+      mockFeePolicy.overdueGraceDays,
+    ).find((row) => row.issueDate.slice(0, 7) === today.slice(0, 7) && row.issueDate <= today)
+    if (!installment) {
+      return mockRequest<import('@/types').TermBillingResult>({
+        termId: term.id,
+        termName: term.name,
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+        skipped: 1,
+      })
+    }
+    const klass = classes.find((row) => row.id === student.classId)
+    const level = student.educationLevelId || klass?.educationLevelId || klass?.level
+    const category = feeCategoryFor(student.residency, level)
+    const amount = feeAmountFor(mockFeePolicy.fees!, category, 'MONTHLY')
+    if (amount <= 0) throw new Error('Set the monthly fee amount in Settings before billing')
+    const id = monthlyInvoiceId(term.id, student.id, installment.instalment)
+    const existing = invoices.find((row) => row.id === id)
+    if (existing) {
+      existing.total = amount
+      existing.category = category
+      existing.plan = 'MONTHLY'
+      existing.termId = term.id
+      existing.termName = term.name
+      existing.period = installment.period
+      existing.status =
+        existing.paid >= amount ? 'PAID' : existing.paid > 0 ? 'PARTIAL' : 'OPEN'
+      return mockRequest<import('@/types').TermBillingResult>({
+        termId: term.id,
+        termName: term.name,
+        created: 0,
+        updated: 1,
+        unchanged: 0,
+        skipped: 0,
+      })
+    }
+    invoices.push({
+      id,
+      studentId: student.id,
+      number: `INV-${term.id.replace(/^term-/, '')}-${student.studentNumber}-M${installment.instalment}`,
+      dueDate: installment.dueDate,
+      total: amount,
+      paid: 0,
+      status: 'OPEN',
+      termId: term.id,
+      termName: term.name,
+      category,
+      plan: 'MONTHLY',
+      period: installment.period,
+      createdAt: new Date().toISOString(),
+    })
+    return mockRequest<import('@/types').TermBillingResult>({
+      termId: term.id,
+      termName: term.name,
+      created: 1,
+      updated: 0,
+      unchanged: 0,
+      skipped: 0,
+    })
+  },
   recordPayment: async (
     input: import('@/types').RecordPaymentInput,
   ): Promise<import('@/types').RecordPaymentResult> => {
@@ -927,8 +1079,17 @@ const mockCatalogService = {
       receiptNumber: input.receiptNumber || `VHS-${1000 + payments.length + 1}`,
     }
     payments.unshift(payment)
+    const today = new Date().toISOString().slice(0, 10)
+    const currentMonthLabel = new Date().toLocaleDateString('en-GB', {
+      month: 'long',
+      year: 'numeric',
+    })
     const feesCleared = invoices
-      .filter((i) => i.studentId === input.studentId)
+      .filter(
+        (i) =>
+          i.studentId === input.studentId &&
+          (i.dueDate <= today || (i.plan === 'MONTHLY' && i.period === currentMonthLabel)),
+      )
       .every((i) => i.paid >= i.total)
     return mockRequest({ payment, invoice: { ...invoice }, feesCleared })
   },

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { randomInt } from 'node:crypto'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
+import { invoiceBlocksPortal } from '@/lib/fees'
 import { writeAuditLog } from '@/server/audit/logger'
 import type { SessionContext } from '@/server/auth/session'
 import { requirePermission } from '@/server/authorization/permissions'
@@ -81,7 +82,7 @@ async function portalFeeStatus(
   let outstanding = 0
   for (const doc of invoices.docs) {
     const inv = doc.data() as Invoice
-    if (inv.status === 'PAID') continue
+    if (!invoiceBlocksPortal(inv)) continue
     const paid = await computeConfirmedPaid(doc.id)
     outstanding += Math.max(0, (inv.total ?? 0) - paid)
   }

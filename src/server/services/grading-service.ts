@@ -7,47 +7,58 @@ import { getDoc, setDoc } from '@/server/repositories/firestore-repo'
 import { gradingTrackForLevel, gradingTrackLabel } from '@/lib/education-levels'
 import type { GradeBand, GradingScale, GradingScalesBundle, GradingTrack } from '@/types'
 
-const TRACKS: GradingTrack[] = ['FORM_1_4', 'FORM_5_6']
+const TRACKS: GradingTrack[] = ['ECD', 'PRIMARY', 'FORM_1_4', 'FORM_5_6']
 
-/** Zimbabwe-style O-Level defaults (Form 1–4). */
-export const DEFAULT_FORM_1_4_SCALE: GradingScale = {
-  id: 'FORM_1_4',
-  track: 'FORM_1_4',
-  label: gradingTrackLabel('FORM_1_4'),
-  passMark: 50,
-  bands: [
-    { grade: 'A', minPercent: 80, maxPercent: 100 },
-    { grade: 'B', minPercent: 70, maxPercent: 79 },
-    { grade: 'C', minPercent: 60, maxPercent: 69 },
-    { grade: 'D', minPercent: 50, maxPercent: 59 },
-    { grade: 'E', minPercent: 40, maxPercent: 49 },
-    { grade: 'U', minPercent: 0, maxPercent: 39 },
-  ],
+function defaultScale(track: GradingTrack, bands: GradeBand[]): GradingScale {
+  return {
+    id: track,
+    track,
+    label: gradingTrackLabel(track),
+    passMark: 50,
+    bands,
+  }
 }
 
+const STANDARD_BANDS: GradeBand[] = [
+  { grade: 'A', minPercent: 80, maxPercent: 100 },
+  { grade: 'B', minPercent: 70, maxPercent: 79 },
+  { grade: 'C', minPercent: 60, maxPercent: 69 },
+  { grade: 'D', minPercent: 50, maxPercent: 59 },
+  { grade: 'E', minPercent: 40, maxPercent: 49 },
+  { grade: 'U', minPercent: 0, maxPercent: 39 },
+]
+
+/** Default ECD scale; schools can customize these percentage bands in settings. */
+export const DEFAULT_ECD_SCALE = defaultScale('ECD', STANDARD_BANDS)
+
+/** Default Grades 1–7 scale; schools can customize these percentage bands in settings. */
+export const DEFAULT_PRIMARY_SCALE = defaultScale('PRIMARY', STANDARD_BANDS)
+
+/** Zimbabwe-style O-Level defaults (Form 1–4). */
+export const DEFAULT_FORM_1_4_SCALE: GradingScale = defaultScale('FORM_1_4', STANDARD_BANDS)
+
 /** A-Level defaults (Form 5–6). */
-export const DEFAULT_FORM_5_6_SCALE: GradingScale = {
-  id: 'FORM_5_6',
-  track: 'FORM_5_6',
-  label: gradingTrackLabel('FORM_5_6'),
-  passMark: 50,
-  bands: [
+export const DEFAULT_FORM_5_6_SCALE: GradingScale = defaultScale('FORM_5_6', [
     { grade: 'A', minPercent: 75, maxPercent: 100 },
     { grade: 'B', minPercent: 65, maxPercent: 74 },
     { grade: 'C', minPercent: 55, maxPercent: 64 },
     { grade: 'D', minPercent: 45, maxPercent: 54 },
     { grade: 'E', minPercent: 35, maxPercent: 44 },
     { grade: 'U', minPercent: 0, maxPercent: 34 },
-  ],
-}
+  ])
 
 /** @deprecated Prefer track-specific defaults. */
 export const DEFAULT_GRADING_SCALE = DEFAULT_FORM_1_4_SCALE
 
 function defaultForTrack(track: GradingTrack): GradingScale {
-  return track === 'FORM_5_6'
-    ? { ...DEFAULT_FORM_5_6_SCALE, bands: DEFAULT_FORM_5_6_SCALE.bands.map((b) => ({ ...b })) }
-    : { ...DEFAULT_FORM_1_4_SCALE, bands: DEFAULT_FORM_1_4_SCALE.bands.map((b) => ({ ...b })) }
+  const defaults: Record<GradingTrack, GradingScale> = {
+    ECD: DEFAULT_ECD_SCALE,
+    PRIMARY: DEFAULT_PRIMARY_SCALE,
+    FORM_1_4: DEFAULT_FORM_1_4_SCALE,
+    FORM_5_6: DEFAULT_FORM_5_6_SCALE,
+  }
+  const scale = defaults[track]
+  return { ...scale, bands: scale.bands.map((b) => ({ ...b })) }
 }
 
 function validateBands(bands: GradeBand[]) {
@@ -85,6 +96,8 @@ function normalizeScale(
 
 type StoredScales = {
   id?: string
+  ECD?: Partial<GradingScale>
+  PRIMARY?: Partial<GradingScale>
   FORM_1_4?: Partial<GradingScale>
   FORM_5_6?: Partial<GradingScale>
   /** Legacy single-scale document fields */
@@ -96,7 +109,12 @@ type StoredScales = {
 
 async function readStored(): Promise<StoredScales | undefined> {
   const modern = await getDoc<StoredScales & { id: string }>('settings', 'gradingScales')
-  if (modern?.FORM_1_4?.bands?.length || modern?.FORM_5_6?.bands?.length) return modern
+  if (
+    modern?.ECD?.bands?.length ||
+    modern?.PRIMARY?.bands?.length ||
+    modern?.FORM_1_4?.bands?.length ||
+    modern?.FORM_5_6?.bands?.length
+  ) return modern
 
   // Migrate legacy single scale into Form 1–4
   const legacy = await getDoc<GradingScale>('settings', 'gradingScale')
@@ -127,6 +145,8 @@ export async function getGradingScales(): Promise<GradingScalesBundle> {
         }
       : undefined)
   return {
+    ECD: normalizeScale('ECD', stored?.ECD),
+    PRIMARY: normalizeScale('PRIMARY', stored?.PRIMARY),
     FORM_1_4: normalizeScale('FORM_1_4', legacyForm14),
     FORM_5_6: normalizeScale('FORM_5_6', stored?.FORM_5_6),
   }
@@ -176,6 +196,8 @@ export async function updateGradingScaleService(
     [input.track]: next,
   }
   await setDoc('settings', 'gradingScales', {
+    ECD: bundle.ECD,
+    PRIMARY: bundle.PRIMARY,
     FORM_1_4: bundle.FORM_1_4,
     FORM_5_6: bundle.FORM_5_6,
     updatedAt: next.updatedAt,

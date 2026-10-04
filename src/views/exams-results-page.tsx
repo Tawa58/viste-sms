@@ -15,11 +15,13 @@ import {
   autoCommentForGrade,
   gradeFromScore,
 } from '@/lib/grading'
+import { gradingTrackForLevel } from '@/lib/education-levels'
 import { catalogService, classService, studentService } from '@/services/api'
 import { notify } from '@/lib/notify'
 import { fullName } from '@/lib/utils'
 import type {
   Assessment,
+  GradingScalesBundle,
   Mark,
   MarkCommentMode,
   ResultPortalView,
@@ -32,7 +34,14 @@ import type {
 
 const workflow = ['Draft', 'Submitted', 'Admin review', 'Published on portal'] as const
 
-type PeriodType = 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
+type PeriodType = 'DAILY' | 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
+
+function currentDate() {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
 
 function currentMonth() {
   const d = new Date()
@@ -59,11 +68,17 @@ function assessmentKey(
   classId: string,
   subjectId: string,
   month: string,
-  weekOf: string,
+  dateOrWeek: string,
   termId: string,
 ) {
   const periodKey =
-    periodType === 'WEEKLY' ? weekOf : periodType === 'TERMLY' ? termId : month
+    periodType === 'DAILY'
+      ? dateOrWeek
+      : periodType === 'WEEKLY'
+        ? dateOrWeek
+        : periodType === 'TERMLY'
+          ? termId
+          : month
   return `as_${periodType.toLowerCase()}_${classId}_${subjectId}_${periodKey}`.replace(
     /[^a-zA-Z0-9_-]/g,
     '_',
@@ -153,21 +168,24 @@ function ClassSubjectMarksPanel({
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [terms, setTerms] = useState<Term[]>([])
+  const [gradingScales, setGradingScales] = useState<GradingScalesBundle | null>(null)
   const [staffSelf, setStaffSelf] = useState<Staff | null>(null)
   const [students, setStudents] = useState<Student[]>([])
   const initialPeriod = (searchParams.get('periodType') as PeriodType | null) ?? 'MONTHLY'
   const [periodType, setPeriodType] = useState<PeriodType>(
-    ['MONTHLY', 'WEEKLY', 'MOCK', 'TERMLY'].includes(initialPeriod) ? initialPeriod : 'MONTHLY',
+    ['DAILY', 'MONTHLY', 'WEEKLY', 'MOCK', 'TERMLY'].includes(initialPeriod) ? initialPeriod : 'MONTHLY',
   )
   const [classId, setClassId] = useState(() => searchParams.get('classId') ?? '')
   const [subjectId, setSubjectId] = useState(() => searchParams.get('subjectId') ?? '')
   const [month, setMonth] = useState(currentMonth())
+  const [date, setDate] = useState(currentDate())
   const [weekOf, setWeekOf] = useState(currentWeekStart())
   const [termId, setTermId] = useState('')
   const [defaultCommentMode, setDefaultCommentMode] = useState<MarkCommentMode>('NONE')
   const [entries, setEntries] = useState<Record<string, StudentEntry>>({})
   const [saving, setSaving] = useState(false)
-  const maxScore = 100
+  const [maxScoreInput, setMaxScoreInput] = useState('100')
+  const maxScore = Number(maxScoreInput)
 
   useEffect(() => {
     void (async () => {
@@ -201,6 +219,13 @@ function ClassSubjectMarksPanel({
       setSubjects(subjectList)
       setStudents(stu)
       setTerms(t)
+      catalogService
+        .getGradingScale()
+        .then(setGradingScales)
+        .catch((error) => {
+          console.error(error)
+          notify.error('Could not load grading scales; mark previews may be inaccurate')
+        })
       const urlClass = searchParams.get('classId')
       const urlSubject = searchParams.get('subjectId')
       setClassId((prev) => {
@@ -222,12 +247,27 @@ function ClassSubjectMarksPanel({
         .sort((a, b) => fullName(a).localeCompare(fullName(b))),
     [students, classId],
   )
+  const selectedClass = classes.find((c) => c.id === classId)
+  const activeScale = gradingScales?.[
+    gradingTrackForLevel(selectedClass?.educationLevelId ?? selectedClass?.level)
+  ]
 
   const currentAssessment = useMemo(() => {
     if (!classId || !subjectId) return undefined
-    const id = assessmentKey(periodType, classId, subjectId, month, weekOf, termId)
+    const id = assessmentKey(
+      periodType,
+      classId,
+      subjectId,
+      month,
+      periodType === 'DAILY' ? date : weekOf,
+      termId,
+    )
     return assessments.find((a) => a.id === id)
-  }, [assessments, classId, subjectId, periodType, month, weekOf, termId])
+  }, [assessments, classId, subjectId, periodType, month, date, weekOf, termId])
+
+  useEffect(() => {
+    if (currentAssessment) setMaxScoreInput(String(currentAssessment.maxScore))
+  }, [currentAssessment?.id, currentAssessment?.maxScore])
 
   useEffect(() => {
     if (!currentAssessment) {
@@ -263,12 +303,31 @@ function ClassSubjectMarksPanel({
   function previewGrade(scoreStr: string) {
     const score = Number(scoreStr)
     if (!Number.isFinite(score)) return '—'
-    return gradeFromScore(score, maxScore)
+    return gradeFromScore(score, maxScore, activeScale)
   }
 
   async function submit(action: 'draft' | 'submit') {
     if (!classId || !subjectId) {
       notify.error('Select class and subject')
+      return
+    }
+    if (!Number.isFinite(maxScore) || maxScore < 1 || maxScore > 1000) {
+      notify.error('Maximum mark must be between 1 and 1000')
+      return
+    }
+    if (
+      roster.some((s) => {
+        const scoreText = entries[s.id]?.score.trim()
+        if (!scoreText) return false
+        const score = Number(scoreText)
+        return !Number.isFinite(score) || score < 0 || score > maxScore
+      })
+    ) {
+      notify.error(`A student's mark cannot exceed ${maxScore}`)
+      return
+    }
+    if (periodType === 'DAILY' && !date) {
+      notify.error('Select the exercise date')
       return
     }
     if (periodType === 'TERMLY' && !termId) {
@@ -286,8 +345,9 @@ function ClassSubjectMarksPanel({
     const payloadEntries = roster
       .map((s) => {
         const row = entries[s.id]
+        if (!row?.score.trim()) return null
         const score = Number(row?.score)
-        if (!Number.isFinite(score)) return null
+        if (!Number.isFinite(score) || score < 0) return null
         const mode = row?.commentMode ?? defaultCommentMode
         return {
           studentId: s.id,
@@ -319,6 +379,7 @@ function ClassSubjectMarksPanel({
             classId,
             subjectId,
             periodType,
+            date: periodType === 'DAILY' ? date : undefined,
             month:
               periodType === 'MONTHLY' || periodType === 'MOCK' ? month : undefined,
             weekOf: periodType === 'WEEKLY' ? weekOf : undefined,
@@ -358,10 +419,10 @@ function ClassSubjectMarksPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Create test & enter marks</CardTitle>
+        <CardTitle>Create assessment & enter marks</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Choose monthly, weekly, mock, or end-of-term. Enter scores, add custom comments, or use
-          system auto comments from the grade. Submit for admin approval.
+          Choose daily, monthly, weekly, mock, or end-of-term. Set the maximum mark, enter scores,
+          add custom comments, or use system auto comments from the grade. Submit for admin approval.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -376,6 +437,7 @@ function ClassSubjectMarksPanel({
           {(
             [
               ['MONTHLY', 'Monthly'],
+              ['DAILY', 'Daily'],
               ['WEEKLY', 'Weekly'],
               ['MOCK', 'Mock'],
               ['TERMLY', 'End of term'],
@@ -393,8 +455,13 @@ function ClassSubjectMarksPanel({
           ))}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {periodType === 'WEEKLY' ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {periodType === 'DAILY' ? (
+            <div className="space-y-1.5">
+              <Label>Exercise date</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+          ) : periodType === 'WEEKLY' ? (
             <div className="space-y-1.5">
               <Label>Week starting</Label>
               <Input type="date" value={weekOf} onChange={(e) => setWeekOf(e.target.value)} />
@@ -449,6 +516,16 @@ function ClassSubjectMarksPanel({
               <option value="AUTO">System auto comment from grade</option>
               <option value="CUSTOM">Custom comment per student</option>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Maximum mark</Label>
+            <Input
+              type="number"
+              min={1}
+              max={1000}
+              value={maxScoreInput}
+              onChange={(e) => setMaxScoreInput(e.target.value)}
+            />
           </div>
         </div>
 

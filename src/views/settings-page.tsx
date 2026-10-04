@@ -1404,16 +1404,17 @@ function GradingScalePanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>High school grading</CardTitle>
+        <CardTitle>Grading scales</CardTitle>
         <CardDescription>
-          Set separate A–U percent bands for Form 1–4 and Form 5–6. Monthly tests and end-of-term
-          exams assign letter grades from the scheme that matches the student&apos;s form.
+          Set the percentage bands used to grade ECD, Grades 1–7, and secondary assessments.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex flex-wrap gap-2">
           {(
             [
+              ['ECD', 'ECD'],
+              ['PRIMARY', 'Grades 1–7'],
               ['FORM_1_4', 'Form 1–4'],
               ['FORM_5_6', 'Form 5–6'],
             ] as const
@@ -1431,9 +1432,12 @@ function GradingScalePanel() {
         </div>
 
         <Alert title={active.label} tone="info">
-          {track === 'FORM_1_4'
-            ? 'Used for Form 1, 2, 3 and 4 classes (O-Level track).'
-            : 'Used for Form 5 and 6 classes (A-Level track).'}
+          {{
+            ECD: 'Used for ECD classes.',
+            PRIMARY: 'Used for Grade 1 through Grade 7 classes.',
+            FORM_1_4: 'Used for Form 1, 2, 3 and 4 classes (O-Level track).',
+            FORM_5_6: 'Used for Form 5 and 6 classes (A-Level track).',
+          }[track]}
         </Alert>
 
         <Field className="max-w-xs">
@@ -1524,7 +1528,7 @@ function GradingScalePanel() {
         </div>
 
         <Button loading={saving} onClick={() => void save()}>
-          Save {track === 'FORM_1_4' ? 'Form 1–4' : 'Form 5–6'} scale
+          Save {active.label} scale
         </Button>
       </CardContent>
     </Card>

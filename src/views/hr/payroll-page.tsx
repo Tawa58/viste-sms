@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   CheckCircle2,
   Download,
@@ -182,6 +183,7 @@ export function PayrollPage() {
   const can = useHrAccess()
   const canManage = can('payroll.manage')
   const canApprove = can('payroll.approve')
+  const canManageHr = can('hr.manage')
   const now = new Date()
   const [loading, setLoading] = useState(true)
   const [runs, setRuns] = useState<PayrollRun[]>([])
@@ -488,10 +490,20 @@ export function PayrollPage() {
     <div>
       <PageHeader
         title="Payroll"
-        description="Generate the monthly payroll from salary scales, deductions and attendance, preview it, approve and lock it, then issue payslips."
+        description="Generate payroll for employees in Staff records using their assigned role salaries. Open any employee’s payslip to download a PDF or print it."
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'HR & Payroll' }, { label: 'Payroll' }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {canManageHr ? (
+              <>
+                <Button asChild type="button" variant="outline">
+                  <Link to="/hr/staff">Staff records</Link>
+                </Button>
+                <Button asChild type="button" variant="outline">
+                  <Link to="/hr/salary-scales">Role salaries</Link>
+                </Button>
+              </>
+            ) : null}
             <Select
               aria-label="Month"
               value={String(month)}
@@ -711,7 +723,7 @@ export function PayrollPage() {
                         ) : null}
                         <Button type="button" size="sm" variant="outline" onClick={() => setSlip(i)}>
                           <FileText className="h-4 w-4" />
-                          Payslip
+                          Payslip · PDF / print
                         </Button>
                       </div>
                     </DataTableCell>

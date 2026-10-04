@@ -43,20 +43,33 @@ export function educationBand(id: string | undefined | null): EducationBand | un
   return getEducationLevel(id)?.band
 }
 
-/** Mark scheme track for high-school forms (O-Level vs A-Level). */
-export type GradingTrackId = 'FORM_1_4' | 'FORM_5_6'
+/** Mark scheme track for ECD, primary and secondary education. */
+export type GradingTrackId = 'ECD' | 'PRIMARY' | 'FORM_1_4' | 'FORM_5_6'
 
 export function gradingTrackForLevel(
   educationLevelId: string | undefined | null,
 ): GradingTrackId {
-  const id = (educationLevelId ?? '').toLowerCase()
+  const id = (
+    resolveEducationLevelId(educationLevelId) ?? educationLevelId ?? ''
+  ).toLowerCase()
+  if (id === 'ecd') return 'ECD'
+  if (/^grade-[1-7]$/.test(id)) return 'PRIMARY'
   if (id === 'form-5' || id === 'form-6') return 'FORM_5_6'
-  // Form 1–4 and any other secondary default to the Form 1–4 scheme
+  // Form 1–4 and any other secondary default to the Form 1–4 scheme.
   return 'FORM_1_4'
 }
 
 export function gradingTrackLabel(track: GradingTrackId) {
-  return track === 'FORM_5_6' ? 'Form 5–6 (A-Level)' : 'Form 1–4 (O-Level)'
+  switch (track) {
+    case 'ECD':
+      return 'ECD'
+    case 'PRIMARY':
+      return 'Grades 1–7'
+    case 'FORM_5_6':
+      return 'Form 5–6 (A-Level)'
+    default:
+      return 'Form 1–4 (O-Level)'
+  }
 }
 
 /** Resolve level id from legacy free-text `level` field on older class docs. */

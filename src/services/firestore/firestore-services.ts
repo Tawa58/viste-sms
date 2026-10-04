@@ -465,7 +465,8 @@ export const firestoreCatalogService = {
   async submitClassSubjectMarks(input: {
     classId: string
     subjectId: string
-    periodType: 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
+    periodType: 'DAILY' | 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
+    date?: string
     month?: string
     weekOf?: string
     termId?: string
@@ -518,6 +519,10 @@ export const firestoreCatalogService = {
   async billTerm(termId?: string) {
     const { apiCatalogService } = await import('@/services/api/server-api-services')
     return apiCatalogService.billTerm(termId)
+  },
+  async billCurrentMonth(studentId: string) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.billCurrentMonth(studentId)
   },
   async recordPayment(input: import('@/types').RecordPaymentInput) {
     const { apiCatalogService } = await import('@/services/api/server-api-services')

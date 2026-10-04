@@ -55,6 +55,7 @@ import type {
 } from '@/types'
 
 const ASSESSMENT_TYPE_LABEL: Record<string, string> = {
+  DAILY: 'Daily exercise',
   MONTHLY: 'Monthly test',
   WEEKLY: 'Weekly test',
   MOCK: 'Mock exam',

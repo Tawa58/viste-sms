@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   feeAmountFor,
   feeCategoryFor,
+  invoiceBlocksPortal,
   monthlyInstalments,
   monthlyInvoiceId,
   normalizeFeeSchedule,
@@ -57,6 +58,35 @@ describe('feeAmountFor', () => {
     const schedule = normalizeFeeSchedule({ PRIMARY_DAY: { termly: 300, monthly: 110 } })
     expect(feeAmountFor(schedule, 'PRIMARY_DAY', 'TERMLY')).toBe(300)
     expect(feeAmountFor(schedule, 'PRIMARY_DAY', 'MONTHLY')).toBe(110)
+  })
+})
+
+describe('invoiceBlocksPortal', () => {
+  it('does not block a portal code for a future monthly instalment', () => {
+    expect(
+      invoiceBlocksPortal(
+        { dueDate: '2026-11-14', plan: 'MONTHLY', period: 'November 2026' },
+        '2026-10-04',
+      ),
+    ).toBe(false)
+  })
+
+  it('still requires the current monthly instalment to be paid', () => {
+    expect(
+      invoiceBlocksPortal(
+        { dueDate: '2026-10-14', plan: 'MONTHLY', period: 'October 2026' },
+        '2026-10-04',
+      ),
+    ).toBe(true)
+  })
+
+  it('blocks portal access for an unpaid invoice that is due', () => {
+    expect(invoiceBlocksPortal({ dueDate: '2026-10-01', plan: 'TERMLY' }, '2026-10-04')).toBe(
+      true,
+    )
+    expect(invoiceBlocksPortal({ dueDate: '2026-11-01', plan: 'TERMLY' }, '2026-10-04')).toBe(
+      false,
+    )
   })
 })
 

@@ -186,7 +186,6 @@ export async function getClassResultsSummary(
     input.period === 'MONTH'
       ? [
           { field: 'classId', op: '==' as const, value: classId },
-          { field: 'type', op: '==' as const, value: 'MONTHLY' },
           { field: 'month', op: '==' as const, value: input.month },
         ]
       : [
@@ -194,7 +193,12 @@ export async function getClassResultsSummary(
           { field: 'type', op: '==' as const, value: 'TERMLY' },
           { field: 'termId', op: '==' as const, value: input.termId },
         ]
-  const assessments = await queryCollection<Assessment>('assessments', { limit: 100, where })
+  const assessments = (await queryCollection<Assessment>('assessments', { limit: 100, where }))
+    .filter((a) =>
+      input.period === 'MONTH'
+        ? a.type === 'MONTHLY' || a.type === 'DAILY'
+        : a.type === 'TERMLY',
+    )
 
   const [students, markLists, subjectDocs, scale] = await Promise.all([
     queryCollection<Student>('students', {
@@ -214,7 +218,7 @@ export async function getClassResultsSummary(
         getDoc<Subject>('subjects', sid),
       ),
     ),
-    getGradingScaleForEducationLevel(cls.educationLevelId),
+    getGradingScaleForEducationLevel(cls.educationLevelId || cls.level),
   ])
 
   const subjectName = new Map<string, string>()

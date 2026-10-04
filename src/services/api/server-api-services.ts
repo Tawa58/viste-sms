@@ -577,7 +577,8 @@ export const apiCatalogService = {
   submitClassSubjectMarks: (input: {
     classId: string
     subjectId: string
-    periodType: 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
+    periodType: 'DAILY' | 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
+    date?: string
     month?: string
     weekOf?: string
     termId?: string
@@ -694,6 +695,11 @@ export const apiCatalogService = {
     apiFetch<import('@/types').TermBillingResult>('/api/v1/invoices', {
       method: 'POST',
       body: JSON.stringify(termId ? { termId } : {}),
+    }),
+  billCurrentMonth: (studentId: string) =>
+    apiFetch<import('@/types').TermBillingResult>('/api/v1/invoices', {
+      method: 'POST',
+      body: JSON.stringify({ studentId, currentMonthOnly: true }),
     }),
   recordPayment: (input: RecordPaymentInput) =>
     apiFetch<RecordPaymentResult>('/api/v1/payments', {

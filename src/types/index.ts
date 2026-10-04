@@ -292,8 +292,8 @@ export interface GradeBand {
   maxPercent: number
 }
 
-/** High-school mark schemes: O-Level (Form 1–4) and A-Level (Form 5–6). */
-export type GradingTrack = 'FORM_1_4' | 'FORM_5_6'
+/** School grading schemes, from ECD through A-Level. */
+export type GradingTrack = 'ECD' | 'PRIMARY' | 'FORM_1_4' | 'FORM_5_6'
 
 export interface GradingScale {
   id: GradingTrack
@@ -306,6 +306,8 @@ export interface GradingScale {
 }
 
 export interface GradingScalesBundle {
+  ECD: GradingScale
+  PRIMARY: GradingScale
   FORM_1_4: GradingScale
   FORM_5_6: GradingScale
 }
@@ -525,7 +527,7 @@ export interface Assessment {
   id: string
   examinationId?: string
   name: string
-  /** MONTHLY | WEEKLY | MOCK | TERMLY */
+  /** DAILY | MONTHLY | WEEKLY | MOCK | TERMLY */
   type: string
   subjectId: string
   streamId: string
@@ -538,6 +540,8 @@ export interface Assessment {
   month?: string
   /** YYYY-MM-DD week start for weekly tests (also may be stored in month). */
   weekOf?: string
+  /** YYYY-MM-DD for daily exercises. */
+  date?: string
   /** Staff who last entered / submitted marks. */
   enteredBy?: string
   enteredByName?: string

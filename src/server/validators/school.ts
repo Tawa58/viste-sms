@@ -273,7 +273,12 @@ export const classSubjectMarksSchema = z
   .object({
     classId: idSchema,
     subjectId: idSchema,
-    periodType: z.enum(['MONTHLY', 'WEEKLY', 'MOCK', 'TERMLY']).default('MONTHLY'),
+    periodType: z.enum(['DAILY', 'MONTHLY', 'WEEKLY', 'MOCK', 'TERMLY']).default('MONTHLY'),
+    /** YYYY-MM-DD — required for DAILY exercises */
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
     /** YYYY-MM — required for MONTHLY and MOCK */
     month: z
       .string()
@@ -295,6 +300,13 @@ export const classSubjectMarksSchema = z
     action: z.enum(['draft', 'submit']).default('draft'),
   })
   .superRefine((val, ctx) => {
+    if (val.periodType === 'DAILY' && !val.date) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Date is required for daily exercises',
+        path: ['date'],
+      })
+    }
     if ((val.periodType === 'MONTHLY' || val.periodType === 'MOCK') && !val.month) {
       ctx.addIssue({
         code: 'custom',
@@ -316,6 +328,15 @@ export const classSubjectMarksSchema = z
         path: ['termId'],
       })
     }
+    val.entries.forEach((entry, index) => {
+      if (entry.score > val.maxScore) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Score cannot exceed the maximum mark of ${val.maxScore}`,
+          path: ['entries', index, 'score'],
+        })
+      }
+    })
   })
 
 /** @deprecated Prefer classSubjectMarksSchema — kept for older monthly payloads. */
@@ -342,7 +363,7 @@ export const monthlyMarksSchema = z.object({
 })
 
 export const gradingScaleSchema = z.object({
-  track: z.enum(['FORM_1_4', 'FORM_5_6']),
+  track: z.enum(['ECD', 'PRIMARY', 'FORM_1_4', 'FORM_5_6']),
   passMark: z.number().min(0).max(100),
   bands: z
     .array(
@@ -426,6 +447,8 @@ export const feePolicySchema = z.object({
 
 export const termBillingSchema = z.object({
   termId: idSchema.optional(),
+  studentId: idSchema.optional(),
+  currentMonthOnly: z.boolean().optional(),
 })
 
 export const academicSettingsSchema = z.object({

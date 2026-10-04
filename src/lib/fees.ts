@@ -143,6 +143,20 @@ export function feeAmountFor(schedule: FeeSchedule, category: FeeCategory, plan:
   return (plan === 'MONTHLY' ? amounts?.monthly : amounts?.termly) ?? 0
 }
 
+/** Future monthly instalments don't block access; current instalments and due invoices do. */
+export function invoiceBlocksPortal(
+  invoice: { dueDate: string; plan?: PaymentPlan; period?: string },
+  today = new Date().toISOString().slice(0, 10),
+) {
+  if (invoice.plan === 'MONTHLY' && invoice.period) {
+    const invoiceMonth = Date.parse(`1 ${invoice.period} UTC`)
+    const [year, month] = today.slice(0, 7).split('-').map(Number)
+    const currentMonth = Date.UTC(year!, month! - 1, 1)
+    if (Number.isFinite(invoiceMonth)) return invoiceMonth <= currentMonth
+  }
+  return invoice.dueDate <= today
+}
+
 export function hasAnyFee(schedule: FeeSchedule | undefined | null) {
   return schedule ? Object.values(schedule).some((a) => a.termly > 0 || a.monthly > 0) : false
 }

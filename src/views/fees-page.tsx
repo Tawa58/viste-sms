@@ -638,6 +638,7 @@ export function FeesPage() {
           if (!open) setPaymentDialog(null)
         }}
         onRecorded={handleRecorded}
+        onBilled={load}
       />
 
       <PortalPasscodeDialog
@@ -656,6 +657,7 @@ function RecordPaymentDialog({
   currency,
   onOpenChange,
   onRecorded,
+  onBilled,
 }: {
   open: boolean
   initialStudentId?: string
@@ -663,6 +665,7 @@ function RecordPaymentDialog({
   currency: string
   onOpenChange: (open: boolean) => void
   onRecorded: (result: RecordPaymentResult, student: Student) => Promise<void>
+  onBilled: () => Promise<void>
 }) {
   const [query, setQuery] = useState('')
   const [studentId, setStudentId] = useState('')
@@ -672,6 +675,7 @@ function RecordPaymentDialog({
   const [receiptNumber, setReceiptNumber] = useState('')
   const [paidAt, setPaidAt] = useState('')
   const [saving, setSaving] = useState(false)
+  const [billing, setBilling] = useState(false)
 
   const account = accounts.find((a) => a.student.id === studentId)
   const unpaid = useMemo(
@@ -680,13 +684,57 @@ function RecordPaymentDialog({
   )
   const invoice = unpaid.find((i) => i.id === invoiceId)
 
+  function currentMonthLabel() {
+    return new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+  }
+
+  useEffect(() => {
+    if (invoiceId || unpaid.length === 0) return
+    const next = unpaid.find((i) => i.period === currentMonthLabel()) ?? unpaid[0]!
+    setInvoiceId(next.id)
+    setAmount(String(invoiceBalance(next)))
+  }, [invoiceId, unpaid])
+
   function selectStudent(id: string) {
     setStudentId(id)
     const first = accounts
       .find((a) => a.student.id === id)
-      ?.invoices.find((i) => invoiceBalance(i) > 0)
+      ?.invoices.find((i) => i.period === currentMonthLabel() && invoiceBalance(i) > 0) ??
+      accounts
+        .find((a) => a.student.id === id)
+        ?.invoices.find((i) => invoiceBalance(i) > 0)
     setInvoiceId(first?.id ?? '')
     setAmount(first ? String(invoiceBalance(first)) : '')
+  }
+
+  async function billCurrentMonth() {
+    if (!account) return
+    setBilling(true)
+    try {
+      const result = await notify.process(
+        () => catalogService.billCurrentMonth(account.student.id),
+        {
+          loading: 'Billing current month…',
+          success: (r) =>
+            r.created || r.updated
+              ? `Current month billed for ${fullName(account.student)}`
+              : r.unchanged
+                ? 'Current month is already billed'
+                : 'No current-month invoice was due to bill',
+          error: 'Could not bill the current month',
+        },
+      )
+      setInvoiceId('')
+      await onBilled()
+      if (result.skipped) {
+        notify.info(
+          'No current-month invoice',
+          'Check the student’s monthly payment plan and the current term dates.',
+        )
+      }
+    } finally {
+      setBilling(false)
+    }
   }
 
   useEffect(() => {
@@ -702,7 +750,11 @@ function RecordPaymentDialog({
   const owing = useMemo(() => {
     const q = query.trim().toLowerCase()
     return accounts
-      .filter((a) => a.balance > 0)
+      .filter(
+        (a) =>
+          a.balance > 0 ||
+          (a.student.status === 'ACTIVE' && a.plan === 'MONTHLY'),
+      )
       .filter(
         (a) =>
           !q ||
@@ -787,12 +839,12 @@ function RecordPaymentDialog({
                 onChange={(e) => selectStudent(e.target.value)}
               >
                 <option value="">
-                  {owing.length ? 'Select a student with a balance' : 'No students with a balance'}
+                  {owing.length ? 'Select a student' : 'No students available'}
                 </option>
                 {owing.map((a) => (
                   <option key={a.student.id} value={a.student.id}>
                     {fullName(a.student)} · {a.student.studentNumber} ·{' '}
-                    {formatMoney(a.balance, currency)}
+                    {a.balance > 0 ? formatMoney(a.balance, currency) : a.state}
                   </option>
                 ))}
               </Select>
@@ -800,33 +852,48 @@ function RecordPaymentDialog({
           )}
 
           {account ? (
-            <Field>
-              <Label htmlFor="payment-invoice">Invoice</Label>
-              <Select
-                id="payment-invoice"
-                value={invoiceId}
-                onChange={(e) => {
-                  setInvoiceId(e.target.value)
-                  const next = unpaid.find((i) => i.id === e.target.value)
-                  setAmount(next ? String(invoiceBalance(next)) : '')
-                }}
-              >
-                {unpaid.length === 0 ? <option value="">Nothing owing</option> : null}
-                {unpaid.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {[i.termName, i.period, i.number].filter(Boolean).join(' · ')} · balance{' '}
-                    {formatMoney(invoiceBalance(i), currency)}
-                  </option>
-                ))}
-              </Select>
-              {invoice ? (
-                <p className="text-xs text-muted-foreground">
-                  {invoice.category ? `${feeCategoryLabel(invoice.category)} · ` : ''}
-                  {invoice.plan ? `${paymentPlanLabel(invoice.plan)} · ` : ''}
-                  Due {formatDate(invoice.dueDate)}
-                </p>
+            <div className="space-y-2">
+              <Field>
+                <Label htmlFor="payment-invoice">Invoice</Label>
+                <Select
+                  id="payment-invoice"
+                  value={invoiceId}
+                  onChange={(e) => {
+                    setInvoiceId(e.target.value)
+                    const next = unpaid.find((i) => i.id === e.target.value)
+                    setAmount(next ? String(invoiceBalance(next)) : '')
+                  }}
+                >
+                  {unpaid.length === 0 ? <option value="">Nothing owing</option> : null}
+                  {unpaid.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {[i.termName, i.period, i.number].filter(Boolean).join(' · ')} · balance{' '}
+                      {formatMoney(invoiceBalance(i), currency)}
+                    </option>
+                  ))}
+                </Select>
+                {invoice ? (
+                  <p className="text-xs text-muted-foreground">
+                    {invoice.category ? `${feeCategoryLabel(invoice.category)} · ` : ''}
+                    {invoice.plan ? `${paymentPlanLabel(invoice.plan)} · ` : ''}
+                    Due {formatDate(invoice.dueDate)}
+                  </p>
+                ) : null}
+              </Field>
+              {account.plan === 'MONTHLY' ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={billing}
+                  disabled={saving}
+                  onClick={() => void billCurrentMonth()}
+                >
+                  <ReceiptText className="h-4 w-4" />
+                  Bill current month
+                </Button>
               ) : null}
-            </Field>
+            </div>
           ) : null}
 
           <div className="grid gap-3 sm:grid-cols-2">

@@ -17,6 +17,7 @@ import {
   monthlyInstalments,
   monthlyInvoiceId,
   termInvoiceId,
+  invoiceBlocksPortal,
 } from '@/lib/fees'
 import type { PaymentCreateInput } from '@/server/validators/school'
 import type {
@@ -93,6 +94,7 @@ function plannedInvoices(
   term: Term,
   policy: FeePolicy,
   plan: PaymentPlan,
+  currentMonthOnly = false,
 ): PlannedInvoice[] {
   const code = term.id.replace(/^term-/, '')
   if (plan === 'TERMLY') {
@@ -105,8 +107,13 @@ function plannedInvoices(
     ]
   }
   const today = new Date().toISOString().slice(0, 10)
+  const currentMonth = today.slice(0, 7)
   return monthlyInstalments(term.startDate, policy.monthsPerTerm, policy.overdueGraceDays)
-    .filter((m) => m.instalment === 1 || m.issueDate <= today)
+    .filter((m) =>
+      currentMonthOnly
+        ? m.issueDate.slice(0, 7) === currentMonth && m.issueDate <= today
+        : m.instalment === 1 || m.issueDate <= today,
+    )
     .map((m) => ({
       id: monthlyInvoiceId(term.id, student.id, m.instalment),
       number: `INV-${code}-${student.studentNumber}-M${m.instalment}`,
@@ -125,32 +132,44 @@ async function billStudentForTerm(
   educationLevelId: string | undefined,
   term: Term,
   policy: FeePolicy,
+  currentMonthOnly = false,
 ): Promise<BillOutcome> {
   const db = getAdminDb()
   const invoicesRef = db.collection('invoices')
   const category = feeCategoryFor(student.residency, educationLevelId)
   const chosen: PaymentPlan = student.paymentPlan ?? 'TERMLY'
   const other: PaymentPlan = chosen === 'TERMLY' ? 'MONTHLY' : 'TERMLY'
+  if (currentMonthOnly && chosen !== 'MONTHLY') return 'skipped'
+  const planned = plannedInvoices(student, term, policy, chosen, currentMonthOnly)
+  if (planned.length === 0) return 'skipped'
 
   return db.runTransaction(async (tx) => {
-    const otherSnaps = (
-      await tx.getAll(...planInvoiceIds(term.id, student.id, other).map((id) => invoicesRef.doc(id)))
-    ).filter((s) => s.exists)
-    const otherHasPayments = (
-      await Promise.all(
-        otherSnaps.map((s) =>
-          ((s.data() as Invoice).paid ?? 0) > 0
-            ? Promise.resolve(true)
-            : tx
-                .get(db.collection('payments').where('invoiceId', '==', s.id).limit(1))
-                .then((q) => !q.empty),
-        ),
-      )
-    ).some(Boolean)
+    const otherSnaps = currentMonthOnly
+      ? []
+      : (
+          await tx.getAll(
+            ...planInvoiceIds(term.id, student.id, other).map((id) => invoicesRef.doc(id)),
+          )
+        ).filter((s) => s.exists)
+    const otherHasPayments = currentMonthOnly
+      ? false
+      : (
+          await Promise.all(
+            otherSnaps.map((s) =>
+              ((s.data() as Invoice).paid ?? 0) > 0
+                ? Promise.resolve(true)
+                : tx
+                    .get(db.collection('payments').where('invoiceId', '==', s.id).limit(1))
+                    .then((q) => !q.empty),
+            ),
+          )
+        ).some(Boolean)
     const plan = otherHasPayments ? other : chosen
     const amount = feeAmountFor(policy.fees, category, plan)
-    const planned = plannedInvoices(student, term, policy, plan)
-    const snaps = await tx.getAll(...planned.map((p) => invoicesRef.doc(p.id)))
+    const invoicesToBill = currentMonthOnly
+      ? planned
+      : plannedInvoices(student, term, policy, plan)
+    const snaps = await tx.getAll(...invoicesToBill.map((p) => invoicesRef.doc(p.id)))
 
     const repriced = new Map<string, number>()
     for (const snap of snaps) {
@@ -179,7 +198,7 @@ async function billStudentForTerm(
 
     let created = 0
     let updated = 0
-    planned.forEach((p, i) => {
+    invoicesToBill.forEach((p, i) => {
       const snap = snaps[i]!
       if (!snap.exists) {
         if (student.status !== 'ACTIVE') return
@@ -214,7 +233,7 @@ async function billStudentForTerm(
       updated += 1
     })
 
-    if (plan === chosen && (created > 0 || snaps.some((s) => s.exists))) {
+    if (!currentMonthOnly && plan === chosen && (created > 0 || snaps.some((s) => s.exists))) {
       for (const s of otherSnaps) {
         tx.delete(s.ref)
         updated += 1
@@ -292,6 +311,48 @@ export async function generateTermInvoices(
     entityId: term.id,
     requestId,
     metadata: { ...result },
+  })
+  return result
+}
+
+/** Bill this student's monthly invoice for the current calendar month only. */
+export async function generateCurrentMonthInvoice(
+  session: SessionContext,
+  studentId: string,
+  requestId?: string,
+): Promise<TermBillingResult> {
+  requirePermission(session, 'fees.create')
+  const student = await assertCanAccessStudent(session, studentId)
+  if (student.status !== 'ACTIVE') throw badRequest('Only active students can be billed')
+  if (student.paymentPlan !== 'MONTHLY') {
+    throw badRequest('Current-month billing is only available for students on the monthly plan')
+  }
+  const [term, policy] = await Promise.all([resolveBillingTerm(), getFeePolicy()])
+  if (!hasAnyFee(policy.fees)) {
+    throw badRequest('Set the fee amounts in Settings → Fees before billing.')
+  }
+  let level = student.educationLevelId
+  if (!level) {
+    const cls = await getDoc<SchoolClass>('classes', student.classId)
+    level = cls?.educationLevelId || resolveEducationLevelId(cls?.level)
+  }
+  const outcome = await billStudentForTerm(student, level, term, policy, true)
+  const result: TermBillingResult = {
+    termId: term.id,
+    termName: term.name,
+    created: outcome === 'created' ? 1 : 0,
+    updated: outcome === 'updated' ? 1 : 0,
+    unchanged: outcome === 'unchanged' ? 1 : 0,
+    skipped: outcome === 'skipped' ? 1 : 0,
+  }
+  await writeAuditLog({
+    actorId: session.uid,
+    actorRole: session.role,
+    action: 'fees.bill_current_month',
+    entityType: 'students',
+    entityId: studentId,
+    requestId,
+    metadata: { ...result, studentId, month: new Date().toISOString().slice(0, 7) },
   })
   return result
 }
@@ -525,7 +586,7 @@ export async function getInvoice(session: SessionContext, id: string): Promise<I
   return invoice
 }
 
-/** Fee clearance: PAID or outstanding === 0 (using server paid sum). */
+/** Fee clearance ignores future monthly instalments while keeping current fees enforceable. */
 export async function isFeeCleared(studentId: string): Promise<boolean> {
   const invoices = await getAdminDb()
     .collection('invoices')
@@ -536,9 +597,10 @@ export async function isFeeCleared(studentId: string): Promise<boolean> {
 
   for (const doc of invoices.docs) {
     const inv = doc.data() as Invoice
+    if (!invoiceBlocksPortal(inv)) continue
     const paid = await computeConfirmedPaid(doc.id)
     const outstanding = Math.max(0, (inv.total ?? 0) - paid)
-    if (inv.status !== 'PAID' && outstanding > 0) return false
+    if (outstanding > 0) return false
   }
   return true
 }

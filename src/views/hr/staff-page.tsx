@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Briefcase, Plus, Trash2, UserCheck, UserMinus, Users } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { LoadingState } from '@/components/shared/loading-state'
@@ -659,6 +660,17 @@ export function HrStaffPage() {
                     </option>
                   ))}
                 </Select>
+                {canManage && scaleChoices.length === 0 ? (
+                  <p className="text-xs text-warning">
+                    No salary amounts are set for this category yet. Create a role-based scale
+                    before generating payroll.
+                  </p>
+                ) : null}
+                {canManage ? (
+                  <Button asChild type="button" size="sm" variant="outline" className="mt-1">
+                    <Link to="/hr/salary-scales">Set role salary amounts</Link>
+                  </Button>
+                ) : null}
               </Field>
               <Field>
                 <Label>Console login (for check-in)</Label>

@@ -259,7 +259,12 @@ function buildResultPeriods(
   },
 ): StudentResultPeriod[] {
   const monthOf = (a: Assessment) =>
-    (a.type === 'WEEKLY' ? (a.weekOf ?? a.month) : a.month)?.slice(0, 7)
+    (a.type === 'DAILY'
+      ? (a.date ?? a.month)
+      : a.type === 'WEEKLY'
+        ? (a.weekOf ?? a.month)
+        : a.month
+    )?.slice(0, 7)
   const monthly = new Map<string, ResultEntry[]>()
   const termly = new Map<string, ResultEntry[]>()
 
@@ -302,7 +307,7 @@ function buildResultPeriods(
       label: monthLabel(month),
       year: month.slice(0, 4),
       sortKey: month,
-      basis: 'Monthly tests',
+      basis: 'Tests and daily exercises',
       classTeacherComment: opts.termComments.get(termForMonth(month)?.id ?? ''),
       ...summarize(entries, opts.scale),
     })
@@ -366,7 +371,7 @@ function buildResultPeriods(
       sortKey: year,
       basis: terms.length
         ? `Average of ${terms.map((t) => t.label.replace(` ${year}`, '')).join(', ')}`
-        : 'Average of monthly tests',
+        : 'Average of tests and daily exercises',
       classTeacherComment: [...terms].reverse().find((t) => t.classTeacherComment)?.classTeacherComment,
       ...summarize(entries, opts.scale),
     })
@@ -476,7 +481,7 @@ export async function getStudentPortalBundle(session: SessionContext): Promise<S
     stream?.name && !className.toLowerCase().includes(stream.name.toLowerCase())
       ? stream.name
       : undefined
-  const levelId = student.educationLevelId ?? klass?.educationLevelId
+  const levelId = student.educationLevelId ?? klass?.educationLevelId ?? klass?.level
 
   const emptyResults: ResultPortalView = {
     studentId: student.id,

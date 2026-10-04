@@ -71,6 +71,17 @@ function formatMonthLabel(month: string) {
   })
 }
 
+function formatDateLabel(date: string) {
+  const parsed = new Date(`${date}T12:00:00`)
+  return Number.isNaN(parsed.getTime())
+    ? date
+    : parsed.toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+}
+
 async function assertTeacherCanEnter(
   session: SessionContext,
   classId: string,
@@ -141,8 +152,12 @@ export async function upsertMark(
   const student = await getDoc<Student>('students', input.studentId)
   const klass = student ? await getDoc<SchoolClass>('classes', student.classId) : null
   const scale = await getGradingScaleForEducationLevel(
-    student?.educationLevelId || klass?.educationLevelId,
+    student?.educationLevelId || klass?.educationLevelId || klass?.level,
   )
+  if (assessment.maxScore > 0 && input.score > assessment.maxScore) {
+    throw badRequest(`Score cannot exceed the maximum mark of ${assessment.maxScore}`)
+  }
+
   const grade =
     input.grade?.trim() || gradeFromScore(input.score, assessment.maxScore || 100, scale)
   const remark = buildMarkComment(input.commentMode, grade, input.comment)
@@ -276,7 +291,7 @@ export async function getResultsPortal(
   const relevant = assessments.filter(
     (a) =>
       (!a.classId || a.classId === student.classId) &&
-      (!term || a.termId === term.id || a.type === 'MONTHLY'),
+      (!term || a.termId === term.id || a.type === 'MONTHLY' || a.type === 'DAILY'),
   )
   void relevant
 
@@ -347,7 +362,7 @@ export async function getResultsPortal(
     }
   >()
   for (const a of published) {
-    if (a.type !== 'MONTHLY' || !a.month) continue
+    if ((a.type !== 'MONTHLY' && a.type !== 'DAILY') || !a.month) continue
     const m = markByAssessment.get(a.id)
     if (!m || (m.status !== 'PUBLISHED' && m.status !== 'LOCKED')) continue
     const bucket =
@@ -506,7 +521,9 @@ export async function submitClassSubjectMarks(
       : cls.termId || input.termId || 'term_current'
 
   const periodKey =
-    periodType === 'WEEKLY'
+    periodType === 'DAILY'
+      ? input.date!
+      : periodType === 'WEEKLY'
       ? input.weekOf!
       : periodType === 'TERMLY'
         ? termId
@@ -532,7 +549,9 @@ export async function submitClassSubjectMarks(
   const status: MarkWorkflowStatus = input.action === 'submit' ? 'SUBMITTED' : 'DRAFT'
   const now = new Date().toISOString()
   const typeLabel =
-    periodType === 'MONTHLY'
+    periodType === 'DAILY'
+      ? `Daily · ${formatDateLabel(input.date!)}`
+      : periodType === 'MONTHLY'
       ? formatMonthLabel(input.month!)
       : periodType === 'WEEKLY'
         ? `Week of ${input.weekOf}`
@@ -551,6 +570,8 @@ export async function submitClassSubjectMarks(
     classId: input.classId,
     ...(periodType === 'MONTHLY' || periodType === 'MOCK'
       ? { month: input.month }
+      : periodType === 'DAILY'
+        ? { date: input.date, month: input.date!.slice(0, 7) }
       : periodType === 'WEEKLY'
         ? { month: input.weekOf, weekOf: input.weekOf }
         : {}),
@@ -560,7 +581,8 @@ export async function submitClassSubjectMarks(
   }
   await setDoc('assessments', assessmentId, { ...assessment })
 
-  const classScale = await getGradingScaleForEducationLevel(cls.educationLevelId)
+  const classLevel = cls.educationLevelId || cls.level
+  const classScale = await getGradingScaleForEducationLevel(classLevel)
   const scaleByLevel = new Map<
     string,
     Awaited<ReturnType<typeof getGradingScaleForEducationLevel>>
@@ -569,7 +591,7 @@ export async function submitClassSubjectMarks(
   for (const entry of input.entries) {
     const markId = `mk_${assessmentId}_${entry.studentId}`.replace(/[^a-zA-Z0-9_-]/g, '_')
     const student = active.find((s) => s.id === entry.studentId)
-    const levelKey = student?.educationLevelId || cls.educationLevelId || 'form-1'
+    const levelKey = student?.educationLevelId || classLevel || 'form-1'
     let studentScale = scaleByLevel.get(levelKey)
     if (!studentScale) {
       studentScale = student?.educationLevelId
@@ -607,6 +629,7 @@ export async function submitClassSubjectMarks(
       subjectId: input.subjectId,
       periodType,
       month: input.month,
+      date: input.date,
       weekOf: input.weekOf,
       termId,
       count: marks.length,
