@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { hasPermission, ROLE_PERMISSIONS } from '@/server/authorization/rbac-map'
+import {
+  hasPermission,
+  normalizePermissionOverrides,
+  ROLE_PERMISSIONS,
+  resolveEffectivePermissions,
+} from '@/server/authorization/rbac-map'
 
 describe('RBAC permissions', () => {
   it('denies student payment create', () => {
@@ -38,6 +43,23 @@ describe('RBAC permissions', () => {
     expect(effective).not.toContain('attendance.create')
   })
 
+  it('applies staff-specific permission overrides on top of the selected account role', async () => {
+    const { overridesFromStaffSelection, resolveEffectivePermissions } = await import(
+      '@/server/authorization/rbac-map'
+    )
+    const overrides = overridesFromStaffSelection('RECEPTIONIST', [
+      'students.read',
+      'fees.read',
+      'payments.create',
+    ])
+    expect(overrides.grant).toContain('fees.read')
+    expect(overrides.grant).toContain('payments.create')
+    const effective = resolveEffectivePermissions('RECEPTIONIST', overrides)
+    expect(effective).toContain('payments.create')
+    expect(effective).not.toContain('users.manage')
+    expect(effective).not.toContain('teachers.manage')
+  })
+
   it('splits HR, payroll and finance duties by role', () => {
     expect(hasPermission('HR_ADMIN', 'hr.manage')).toBe(true)
     expect(hasPermission('HR_ADMIN', 'payroll.read')).toBe(false)
@@ -57,5 +79,15 @@ describe('RBAC permissions', () => {
     for (const role of Object.keys(ROLE_PERMISSIONS)) {
       expect(ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS].length).toBeGreaterThan(0)
     }
+  })
+
+  it('ignores malformed optional permission overrides without breaking session permissions', () => {
+    const normalized = normalizePermissionOverrides({
+      grant: { permission: 'fees.read' },
+      deny: null,
+    })
+
+    expect(normalized).toEqual({ grant: [], deny: [] })
+    expect(resolveEffectivePermissions('TEACHER', normalized)).toContain('attendance.read')
   })
 })

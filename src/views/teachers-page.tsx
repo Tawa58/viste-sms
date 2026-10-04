@@ -36,7 +36,13 @@ import { Select } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import { catalogService, classService } from '@/services/api'
-import { STAFF_CATEGORIES, staffCategoryLabel } from '@/lib/staff-categories'
+import {
+  defaultAccountRoleForCategory,
+  STAFF_ACCOUNT_ROLES,
+  STAFF_CATEGORIES,
+  staffCategoryLabel,
+} from '@/lib/staff-categories'
+import { permissionLabel } from '@/lib/permission-labels'
 import type { SchoolClass, Staff, StaffCategory, StaffLoginCredential, Subject } from '@/types'
 
 const emptyForm = {
@@ -45,6 +51,7 @@ const emptyForm = {
   department: '',
   title: '',
   category: 'TEACHER' as StaffCategory,
+  accountRole: 'TEACHER' as import('@/types').StaffAccountRole,
   email: '',
   phone: '',
   password: '',
@@ -201,6 +208,7 @@ export function TeachersPage() {
             department: form.department.trim() || 'General',
             title: form.title.trim() || 'Staff',
             category: form.category,
+            accountRole: form.accountRole,
             status: 'ACTIVE',
             subjectIds: form.subjectIds,
             classIds: form.classIds,
@@ -316,6 +324,7 @@ export function TeachersPage() {
                 <tr>
                   <DataTableHeaderCell>Name</DataTableHeaderCell>
                   <DataTableHeaderCell>Category</DataTableHeaderCell>
+                  <DataTableHeaderCell>Account role</DataTableHeaderCell>
                   <DataTableHeaderCell>Title / dept</DataTableHeaderCell>
                   <DataTableHeaderCell>Classes</DataTableHeaderCell>
                   <DataTableHeaderCell>Subjects</DataTableHeaderCell>
@@ -355,6 +364,13 @@ export function TeachersPage() {
                       </DataTableCell>
                       <DataTableCell className="text-muted-foreground">
                         {staffCategoryLabel(s.category)}
+                      </DataTableCell>
+                      <DataTableCell className="text-muted-foreground">
+                        {STAFF_ACCOUNT_ROLES.find(
+                          (role) =>
+                            role.value ===
+                            (s.accountRole ?? defaultAccountRoleForCategory(s.category)),
+                        )?.label ?? 'Teacher'}
                       </DataTableCell>
                       <DataTableCell className="text-muted-foreground">
                         {s.title} · {s.department}
@@ -436,7 +452,7 @@ export function TeachersPage() {
           <DialogHeader>
             <DialogTitle>Add staff member</DialogTitle>
             <DialogDescription>
-              Creates a staff profile and portal login. The teacher can add their own photo later from Settings.
+              Creates a staff profile and portal login with access based on the selected account role.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -459,9 +475,14 @@ export function TeachersPage() {
                 <Label>Staff category</Label>
                 <Select
                   value={form.category}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, category: e.target.value as StaffCategory }))
-                  }
+                  onChange={(e) => {
+                    const category = e.target.value as StaffCategory
+                    setForm((f) => ({
+                      ...f,
+                      category,
+                      accountRole: defaultAccountRoleForCategory(category),
+                    }))
+                  }}
                 >
                   {STAFF_CATEGORIES.map((c) => (
                     <option key={c.value} value={c.value}>
@@ -469,6 +490,27 @@ export function TeachersPage() {
                     </option>
                   ))}
                 </Select>
+              </Field>
+              <Field>
+                <Label>Account role</Label>
+                <Select
+                  value={form.accountRole}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      accountRole: e.target.value as import('@/types').StaffAccountRole,
+                    }))
+                  }
+                >
+                  {STAFF_ACCOUNT_ROLES.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Determines the account’s starting access. You can customize individual permissions after creating it.
+                </p>
               </Field>
               <Field>
                 <Label>Title</Label>
@@ -586,7 +628,7 @@ export function TeachersPage() {
       <Dialog open={credOpen} onOpenChange={setCredOpen}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Teacher login sheet</DialogTitle>
+            <DialogTitle>Staff login sheet</DialogTitle>
             <DialogDescription>
               Email / username and admin-issued passwords. Use Reset if a password is missing
               (older accounts created before passwords were stored).
@@ -649,12 +691,12 @@ export function TeachersPage() {
                 : ''}
             </DialogTitle>
             <DialogDescription>
-              Choose which modules and actions this teacher can use. Open their profile from their
+              Choose which modules and actions this staff member can use. Open their profile from their
               name in the list if you need photo, assignments, or account status.
             </DialogDescription>
           </DialogHeader>
           {accessTarget ? (
-            <TeacherAccessPanel
+            <StaffAccessPanel
               key={accessTarget.id}
               staffId={accessTarget.id}
               staffName={`${accessTarget.firstName} ${accessTarget.lastName}`}
@@ -769,6 +811,8 @@ export function TeacherDetailPage() {
   const [editSubjectIds, setEditSubjectIds] = useState<string[]>([])
   const [editClassIds, setEditClassIds] = useState<string[]>([])
   const [editCategory, setEditCategory] = useState<StaffCategory>('TEACHER')
+  const [editAccountRole, setEditAccountRole] =
+    useState<import('@/types').StaffAccountRole>('TEACHER')
   const [savingProfile, setSavingProfile] = useState(false)
 
   useEffect(() => {
@@ -786,6 +830,9 @@ export function TeacherDetailPage() {
       setEditSubjectIds(s?.subjectIds ?? [])
       setEditClassIds(s?.classIds ?? [])
       setEditCategory(s?.category ?? 'TEACHER')
+      setEditAccountRole(
+        s?.accountRole ?? defaultAccountRoleForCategory(s?.category),
+      )
       setLoading(false)
     })
   }, [id, showCredentials])
@@ -820,11 +867,12 @@ export function TeacherDetailPage() {
         () =>
           catalogService.updateStaff(member.id, {
             category: editCategory,
+            accountRole: editAccountRole,
           }),
         {
-          loading: 'Saving staff category…',
-          success: 'Staff category updated',
-          error: 'Could not update category',
+          loading: 'Saving staff category and account role…',
+          success: 'Staff category and account role updated',
+          error: 'Could not update staff account',
         },
       )
       setMember(updated)
@@ -986,7 +1034,7 @@ export function TeacherDetailPage() {
               <div className="min-w-0">
                 <p className="text-sm font-medium">Profile photo</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Only the teacher can change their photo from Settings.
+                  Staff members can change their own photo from Settings.
                 </p>
               </div>
             </div>
@@ -1000,7 +1048,11 @@ export function TeacherDetailPage() {
                   <Label>Staff category</Label>
                   <Select
                     value={editCategory}
-                    onChange={(e) => setEditCategory(e.target.value as StaffCategory)}
+                    onChange={(e) => {
+                      const category = e.target.value as StaffCategory
+                      setEditCategory(category)
+                      setEditAccountRole(defaultAccountRoleForCategory(category))
+                    }}
                   >
                     {STAFF_CATEGORIES.map((c) => (
                       <option key={c.value} value={c.value}>
@@ -1008,14 +1060,31 @@ export function TeacherDetailPage() {
                       </option>
                     ))}
                   </Select>
+                  <Label>Account role</Label>
+                  <Select
+                    value={editAccountRole}
+                    onChange={(e) =>
+                      setEditAccountRole(e.target.value as import('@/types').StaffAccountRole)
+                    }
+                  >
+                    {STAFF_ACCOUNT_ROLES.map((role) => (
+                      <option key={role.value} value={role.value}>
+                        {role.label}
+                      </option>
+                    ))}
+                  </Select>
                   <Button
                     size="sm"
                     variant="outline"
                     loading={savingProfile}
-                    disabled={editCategory === (member.category ?? 'TEACHER')}
+                    disabled={
+                      editCategory === (member.category ?? 'TEACHER') &&
+                      editAccountRole ===
+                        (member.accountRole ?? defaultAccountRoleForCategory(member.category))
+                    }
                     onClick={() => void saveProfileCategory()}
                   >
-                    Save category
+                    Save category & account role
                   </Button>
                 </div>
               ) : (
@@ -1065,8 +1134,8 @@ export function TeacherDetailPage() {
             <CardContent className="space-y-3 p-5 text-sm">
               <p className="font-medium">Teaching assignments</p>
               <p className="text-xs text-muted-foreground">
-                Subjects and classes this teacher can record monthly tests for. Homeroom class
-                teacher links from Classes are also listed below.
+                Teaching assignments determine which classes and subjects are available for mark entry.
+                Homeroom class teacher links from Classes are also listed below.
               </p>
               {canConfigureAccess ? (
                 <>
@@ -1138,7 +1207,7 @@ export function TeacherDetailPage() {
           </Card>
 
           {canConfigureAccess ? (
-            <TeacherAccessPanel staffId={member.id} staffName={fullName} />
+            <StaffAccessPanel staffId={member.id} staffName={fullName} />
           ) : null}
         </div>
       </div>
@@ -1202,6 +1271,7 @@ export function TeacherDetailPage() {
 
 type StaffAccessPayload = {
   staffId: string
+  role: import('@/types').StaffAccountRole
   roleDefaults: string[]
   assignable: string[]
   groups: { label: string; permissions: string[] }[]
@@ -1210,7 +1280,7 @@ type StaffAccessPayload = {
   selected: string[]
 }
 
-function TeacherAccessPanel({
+function StaffAccessPanel({
   staffId,
   staffName,
   plain = false,
@@ -1238,7 +1308,7 @@ function TeacherAccessPanel({
       })
       .catch((err) => {
         console.error(err)
-        notify.error('Could not load teacher access settings')
+        notify.error('Could not load staff access settings')
       })
       .finally(() => {
         if (mounted) setLoading(false)
@@ -1254,7 +1324,7 @@ function TeacherAccessPanel({
       const next = await notify.process(
         () => catalogService.updateStaffAccess(staffId, selected),
         {
-          loading: 'Saving teacher access…',
+          loading: 'Saving staff access…',
           success: `Access updated for ${staffName}`,
           error: 'Could not save access',
         },
@@ -1278,15 +1348,16 @@ function TeacherAccessPanel({
     <div className="space-y-4">
       {!plain ? (
         <div>
-          <p className="font-medium">What this teacher can see & do</p>
+          <p className="font-medium">What this staff member can see & do</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Tick modules and actions for {staffName}. They only see students in their assigned
-            classes. Changes apply on their next request (within ~20 seconds).
+            Choose the account role’s default access or customize modules and actions for {staffName}.
+            Changes apply on their next request (within ~20 seconds).
           </p>
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          They only see students in their assigned classes. Changes apply within about 20 seconds.
+          Role: <span className="font-medium">{access.role.replaceAll('_', ' ')}</span>.
+          Customize this staff member’s modules and actions; changes apply within about 20 seconds.
         </p>
       )}
       {access.groups.map((group) => (
@@ -1305,7 +1376,7 @@ function TeacherAccessPanel({
                     )
                   }}
                 />
-                <span className="font-mono text-xs">{perm}</span>
+                <span>{permissionLabel(perm)}</span>
               </label>
             ))}
           </div>
@@ -1316,7 +1387,7 @@ function TeacherAccessPanel({
           Save access
         </Button>
         <Button type="button" variant="outline" onClick={resetToDefaults}>
-          Reset to teacher defaults
+          Reset to {access.role.replaceAll('_', ' ')} defaults
         </Button>
       </div>
     </div>

@@ -221,6 +221,18 @@ export const staffCategorySchema = z.enum([
   'OTHER',
 ])
 
+export const staffAccountRoleSchema = z.enum([
+  'TEACHER',
+  'ACCOUNTANT',
+  'FINANCE_OFFICER',
+  'REGISTRAR',
+  'RECEPTIONIST',
+  'LIBRARIAN',
+  'TRANSPORT_MANAGER',
+  'HR_ADMIN',
+  'FINANCE_VIEWER',
+])
+
 export const staffCreateSchema = z.object({
   employeeNumber: z.string().min(1).max(64),
   firstName: z.string().min(1).max(100),
@@ -230,6 +242,7 @@ export const staffCreateSchema = z.object({
   department: z.string().min(1).max(120),
   title: z.string().min(1).max(120),
   category: staffCategorySchema.default('TEACHER'),
+  accountRole: staffAccountRoleSchema.optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).default('ACTIVE'),
   subjectIds: z.array(idSchema).default([]),
   classIds: z.array(idSchema).default([]),

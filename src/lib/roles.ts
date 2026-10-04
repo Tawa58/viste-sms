@@ -20,7 +20,7 @@ const PATH_PERMISSION: Record<string, string | null> = {
   '/users': 'users.manage',
   '/audit-logs': 'audit.read',
   '/inventory': 'settings.manage',
-  '/library': 'students.read',
+  '/library': 'library.manage',
   '/transport': 'students.read',
   '/check-in': 'checkin.self',
   '/staff-attendance': 'checkin.manage',
@@ -206,12 +206,9 @@ export function canAccessPath(
   const allowed = ROLE_ROUTES[role]
   if (allowed === '*') return true
 
-  // Per-user permission overrides (teachers) further restrict/expand within role routes
-  if (permissions && permissions.length > 0 && role === 'TEACHER') {
-    const inRoleRoutes = allowed.some(
-      (route) => pathname === route || pathname.startsWith(`${route}/`),
-    )
-    if (!inRoleRoutes) return false
+  // Staff permissions can extend their role's default modules, and always enforce
+  // the effective permission at the route boundary.
+  if (permissions && permissions.length > 0 && isStaffRole(role)) {
     return pathAllowedByPermissions(pathname, permissions)
   }
 

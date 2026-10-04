@@ -2,13 +2,14 @@ import 'server-only'
 
 import { randomBytes } from 'node:crypto'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
+import { defaultAccountRoleForCategory } from '@/lib/staff-categories'
 import { writeAuditLog } from '@/server/audit/logger'
 import type { SessionContext } from '@/server/auth/session'
 import { requirePermission, sessionHasPermission } from '@/server/authorization/permissions'
 import { badRequest, conflict, notFound, accountSuspended } from '@/server/errors'
 import { getDoc, newId, queryCollection, setDoc, deleteDoc } from '@/server/repositories/firestore-repo'
 import type { StaffCreateInput, StaffSuspendInput } from '@/server/validators/school'
-import type { SchoolClass, Staff, StaffLoginCredential, StaffSuspension } from '@/types'
+import type { SchoolClass, Staff, StaffAccountRole, StaffLoginCredential, StaffSuspension } from '@/types'
 import type { PermissionOverrides } from '@/server/authorization/rbac-map'
 import type { z } from 'zod'
 import type { staffUpdateSchema } from '@/server/validators/school'
@@ -167,10 +168,12 @@ export async function createStaff(
   if (password.length < 8) throw badRequest('Password must be at least 8 characters')
   const { password: _ignored, profilePhotoId, ...rest } = input
   const id = newId('st')
+  const accountRole = input.accountRole ?? defaultAccountRoleForCategory(input.category)
   const row: Staff = {
     ...rest,
     id,
     category: rest.category ?? 'TEACHER',
+    accountRole,
     classIds: rest.classIds ?? [],
     subjectIds: rest.subjectIds ?? [],
     ...(profilePhotoId ? { profilePhotoId } : {}),
@@ -196,7 +199,7 @@ export async function createStaff(
     id: authUid,
     name: `${input.firstName} ${input.lastName}`,
     email: input.email.toLowerCase(),
-    role: 'TEACHER',
+    role: accountRole,
     staffId: id,
     title: input.title,
     department: input.department,
@@ -211,7 +214,7 @@ export async function createStaff(
     staffId: id,
     email: input.email.toLowerCase(),
     password,
-    role: 'TEACHER',
+    role: accountRole,
     temporaryPassword: true,
     lastResetAt: new Date().toISOString().slice(0, 10),
     authUid,
@@ -236,16 +239,27 @@ export async function listStaffCredentials(
   session: SessionContext,
 ): Promise<StaffCredentialDto[]> {
   requirePermission(session, 'teachers.manage')
-  const rows = await queryCollection<StaffCredRow>('staffCredentials', { limit: 100 })
-  return rows.map((row) => ({
-    staffId: row.staffId || row.id,
-    email: row.email,
-    password: row.password || '',
-    role: row.role,
-    temporaryPassword: row.temporaryPassword ?? Boolean(row.password),
-    lastResetAt: row.lastResetAt,
-    hasAuthAccount: Boolean(row.authUid),
-  }))
+  const [rows, staffRows] = await Promise.all([
+    queryCollection<StaffCredRow>('staffCredentials', { limit: 100 }),
+    queryCollection<Staff>('staff', { limit: 500 }),
+  ])
+  const staffById = new Map(staffRows.map((staff) => [staff.id, staff]))
+  return rows.map((row) => {
+    const staff = staffById.get(row.staffId || row.id)
+    return {
+      staffId: row.staffId || row.id,
+      email: row.email,
+      password: row.password || '',
+      role: staff ? accountRoleForStaff(staff) : row.role,
+      temporaryPassword: row.temporaryPassword ?? Boolean(row.password),
+      lastResetAt: row.lastResetAt,
+      hasAuthAccount: Boolean(row.authUid),
+    }
+  })
+}
+
+function accountRoleForStaff(staff: Staff) {
+  return staff.accountRole ?? defaultAccountRoleForCategory(staff.category)
 }
 
 export async function resetStaffPassword(
@@ -260,6 +274,9 @@ export async function resetStaffPassword(
 
   const cred = await getDoc<StaffCredRow>('staffCredentials', staffId)
   if (!cred?.authUid) throw notFound('Staff auth account not found')
+  const staff = await getDoc<Staff>('staff', staffId)
+  if (!staff) throw notFound('Staff not found')
+  const role = accountRoleForStaff(staff)
 
   await getAdminAuth().updateUser(cred.authUid, { password: nextPassword })
   const lastResetAt = new Date().toISOString().slice(0, 10)
@@ -267,7 +284,7 @@ export async function resetStaffPassword(
     staffId,
     email: cred.email,
     password: nextPassword,
-    role: cred.role,
+    role,
     temporaryPassword: true,
     lastResetAt,
     authUid: cred.authUid,
@@ -286,7 +303,7 @@ export async function resetStaffPassword(
     staffId,
     email: cred.email,
     password: nextPassword,
-    role: cred.role,
+    role,
     temporaryPassword: true,
     lastResetAt,
     hasAuthAccount: true,
@@ -295,6 +312,7 @@ export async function resetStaffPassword(
 
 export type StaffAccessDto = {
   staffId: string
+  role: StaffAccountRole
   roleDefaults: string[]
   assignable: string[]
   groups: { label: string; permissions: string[] }[]
@@ -313,21 +331,23 @@ export async function getStaffAccess(
 
   const {
     listPermissions,
-    TEACHER_ASSIGNABLE_PERMISSIONS,
-    TEACHER_PERMISSION_GROUPS,
+    STAFF_ASSIGNABLE_PERMISSIONS,
+    STAFF_PERMISSION_GROUPS,
     resolveEffectivePermissions,
   } = await import('@/server/authorization/rbac-map')
 
+  const role = accountRoleForStaff(row)
   const overrides = row.permissionOverrides ?? {}
-  const effective = resolveEffectivePermissions('TEACHER', overrides)
-  const assignable = [...TEACHER_ASSIGNABLE_PERMISSIONS]
+  const effective = resolveEffectivePermissions(role, overrides)
+  const assignable = [...STAFF_ASSIGNABLE_PERMISSIONS]
   const selected = assignable.filter((p) => effective.includes(p))
 
   return {
     staffId,
-    roleDefaults: listPermissions('TEACHER'),
+    role,
+    roleDefaults: listPermissions(role),
     assignable,
-    groups: TEACHER_PERMISSION_GROUPS.map((g) => ({
+    groups: STAFF_PERMISSION_GROUPS.map((g) => ({
       label: g.label,
       permissions: [...g.permissions],
     })),
@@ -347,8 +367,9 @@ export async function updateStaffAccess(
   const row = await getDoc<Staff>('staff', staffId)
   if (!row) throw notFound('Staff not found')
 
-  const { overridesFromTeacherSelection } = await import('@/server/authorization/rbac-map')
-  const overrides = overridesFromTeacherSelection(selectedPermissions)
+  const { overridesFromStaffSelection } = await import('@/server/authorization/rbac-map')
+  const role = accountRoleForStaff(row)
+  const overrides = overridesFromStaffSelection(role, selectedPermissions)
 
   await setDoc('staff', staffId, {
     ...row,
@@ -393,10 +414,16 @@ export async function updateStaff(
   if (!current) throw notFound('Staff not found')
 
   const { password: _pw, profilePhotoId, ...rest } = input
+  const accountRole =
+    rest.accountRole ??
+    (rest.category && rest.category !== current.category
+      ? defaultAccountRoleForCategory(rest.category)
+      : accountRoleForStaff(current))
   const row: Staff = {
     ...current,
     ...rest,
     id: staffId,
+    accountRole,
     subjectIds: rest.subjectIds ?? current.subjectIds ?? [],
     classIds: rest.classIds ?? current.classIds ?? [],
   }
@@ -411,6 +438,16 @@ export async function updateStaff(
     row.suspension = null
   }
   await setDoc('staff', staffId, { ...row })
+
+  if (accountRole !== accountRoleForStaff(current)) {
+    const cred = await getDoc<StaffCredRow>('staffCredentials', staffId)
+    if (cred?.authUid) {
+      await getAdminDb().collection('users').doc(cred.authUid).set({ role: accountRole }, { merge: true })
+      await setDoc('staffCredentials', staffId, { ...cred, role: accountRole })
+      const { forget } = await import('@/server/http/memo')
+      forget(`session:${cred.authUid}`)
+    }
+  }
 
   if (rest.email && rest.email.toLowerCase() !== current.email.toLowerCase()) {
     const cred = await getDoc<StaffCredRow>('staffCredentials', staffId)

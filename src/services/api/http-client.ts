@@ -62,7 +62,12 @@ async function getIdToken(): Promise<string> {
         tokenPromise = null
       })
   }
-  return tokenPromise
+  try {
+    return await tokenPromise
+  } catch (err) {
+    clearAuthTokenCache()
+    throw err
+  }
 }
 
 export function clearAuthTokenCache() {
@@ -154,7 +159,10 @@ export async function apiFetch<T>(
     // Mark rejection handled so soft-fail callers don't trip "Uncaught (in promise)"
     // while other awaiters still receive the rejection.
     void run.catch(() => undefined)
-    run.finally(() => inflight.delete(cacheKey))
+    void run.then(
+      () => inflight.delete(cacheKey),
+      () => inflight.delete(cacheKey),
+    )
   }
 
   if (method !== 'GET') {

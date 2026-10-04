@@ -97,6 +97,7 @@ import {
   normalizeFeeSchedule,
   scholarshipAdjustedFeeAmount,
 } from '@/lib/fees'
+import { defaultAccountRoleForCategory } from '@/lib/staff-categories'
 
 const mockScholarships: StudentScholarship[] = []
 
@@ -167,7 +168,7 @@ class MockAuthService implements AuthService {
         id: `u-${member.id}`,
         name: `${member.firstName} ${member.lastName}`,
         email: member.email,
-        role: 'TEACHER',
+        role: staffMatch.role,
         phone: member.phone,
         title: member.title,
         department: member.department,
@@ -178,6 +179,16 @@ class MockAuthService implements AuthService {
         notificationPrefs: { email: true, sms: false, inApp: true },
       }
       mockUsers.push(user)
+    }
+    if (user && staffMatch) {
+      const member = staff.find((s) => s.id === staffMatch.staffId)
+      if (member) {
+        user.role =
+          member.accountRole ??
+          (staffMatch.role === 'TEACHER'
+            ? defaultAccountRoleForCategory(member.category)
+            : staffMatch.role)
+      }
     }
     if (!user) throw new Error('User not found')
     const now = new Date().toISOString()
@@ -481,7 +492,20 @@ const mockCatalogService = {
   updateStaff: async (id: string, patch: Partial<Staff>) => {
     const idx = staff.findIndex((s) => s.id === id)
     if (idx < 0) throw new Error('Staff not found')
-    staff[idx] = { ...staff[idx]!, ...patch, id }
+    const current = staff[idx]!
+    const oldRole = current.accountRole ?? defaultAccountRoleForCategory(current.category)
+    const accountRole =
+      patch.accountRole ??
+      (patch.category && patch.category !== current.category
+        ? defaultAccountRoleForCategory(patch.category)
+        : oldRole)
+    staff[idx] = { ...current, ...patch, accountRole, id }
+    if (accountRole !== oldRole) {
+      const credential = staffCredentials.find((row) => row.staffId === id)
+      if (credential) credential.role = accountRole
+      const account = mockUsers.find((row) => row.staffId === id)
+      if (account) account.role = accountRole
+    }
     return mockRequest(staff[idx]!)
   },
   deleteStaff: async (id: string) => {
@@ -519,18 +543,25 @@ const mockCatalogService = {
   getStaffCredential: (staffId: string) =>
     mockRequest(staffCredentials.find((c) => c.staffId === staffId)),
   async getStaffAccess(staffId: string) {
-    const { listPermissions, TEACHER_ASSIGNABLE_PERMISSIONS, TEACHER_PERMISSION_GROUPS, resolveEffectivePermissions } =
+    const {
+      listPermissions,
+      STAFF_ASSIGNABLE_PERMISSIONS,
+      STAFF_PERMISSION_GROUPS,
+      resolveEffectivePermissions,
+    } =
       await import('@/server/authorization/rbac-map')
     const member = staff.find((s) => s.id === staffId)
     if (!member) throw new Error('Staff not found')
+    const role = member.accountRole ?? defaultAccountRoleForCategory(member.category)
     const overrides = member.permissionOverrides ?? {}
-    const effective = resolveEffectivePermissions('TEACHER', overrides)
-    const assignable = [...TEACHER_ASSIGNABLE_PERMISSIONS]
+    const effective = resolveEffectivePermissions(role, overrides)
+    const assignable = [...STAFF_ASSIGNABLE_PERMISSIONS]
     return mockRequest({
       staffId,
-      roleDefaults: listPermissions('TEACHER'),
+      role,
+      roleDefaults: listPermissions(role),
       assignable,
-      groups: TEACHER_PERMISSION_GROUPS.map((g) => ({
+      groups: STAFF_PERMISSION_GROUPS.map((g) => ({
         label: g.label,
         permissions: [...g.permissions],
       })),
@@ -540,10 +571,13 @@ const mockCatalogService = {
     })
   },
   async updateStaffAccess(staffId: string, permissions: string[]) {
-    const { overridesFromTeacherSelection } = await import('@/server/authorization/rbac-map')
+    const { overridesFromStaffSelection } = await import('@/server/authorization/rbac-map')
     const member = staff.find((s) => s.id === staffId)
     if (!member) throw new Error('Staff not found')
-    member.permissionOverrides = overridesFromTeacherSelection(permissions)
+    member.permissionOverrides = overridesFromStaffSelection(
+      member.accountRole ?? defaultAccountRoleForCategory(member.category),
+      permissions,
+    )
     return this.getStaffAccess(staffId)
   },
   async resetStaffPassword(staffId: string, password?: string): Promise<StaffLoginCredential> {
@@ -580,8 +614,11 @@ const mockCatalogService = {
   },
   async createStaff(input: Omit<Staff, 'id'> & { password?: string }): Promise<Staff> {
     const { password = 'demo1234', ...staffInput } = input
+    const accountRole =
+      staffInput.accountRole ?? defaultAccountRoleForCategory(staffInput.category)
     const created: Staff = {
       ...staffInput,
+      accountRole,
       id: `st-${Date.now()}`,
     }
     staff.unshift(created)
@@ -589,7 +626,7 @@ const mockCatalogService = {
       staffId: created.id,
       email: created.email,
       password,
-      role: 'TEACHER',
+      role: accountRole,
       temporaryPassword: true,
       lastResetAt: new Date().toISOString().slice(0, 10),
     })

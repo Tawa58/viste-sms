@@ -11,4 +11,4 @@ export const GET = withApiHandler(async (request, { requestId }) => {
     permissions: sessionPermissions(session),
     requestId,
   })
-})
+}, { requireAdmin: false })

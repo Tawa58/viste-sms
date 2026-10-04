@@ -48,6 +48,9 @@ function wait(ms: number) {
 function loginErrorMessage(err: unknown): string {
   if (err instanceof ApiClientError) {
     if (err.code === 'ACCOUNT_SUSPENDED') return err.message
+    if (err.status >= 500) {
+      return 'The sign-in service is temporarily unavailable. Please try again shortly.'
+    }
     return err.message || 'Invalid email or password'
   }
   if (err && typeof err === 'object' && 'code' in err) {
@@ -62,6 +65,9 @@ function loginErrorMessage(err: unknown): string {
     if (code === 'auth/user-disabled') {
       return 'Your account is currently suspended. Contact your school administrator.'
     }
+    if (code === 'auth/network-request-failed') {
+      return 'Could not reach the sign-in service. Check your internet connection and try again.'
+    }
     if (
       code === 'auth/wrong-password' ||
       code === 'auth/invalid-credential' ||
@@ -70,8 +76,11 @@ function loginErrorMessage(err: unknown): string {
       return 'Invalid email or password'
     }
   }
+  if (err instanceof TypeError) {
+    return 'Could not reach the sign-in service. Check your internet connection and try again.'
+  }
   if (err instanceof Error && err.message) return err.message
-  return 'Invalid email or password'
+  return 'Could not sign in. Please try again.'
 }
 
 export function LoginPage() {
@@ -126,7 +135,14 @@ export function LoginPage() {
   }
 
   function handleSubmit(e: FormEvent) {
-    void form.handleSubmit(onSubmit)(e)
+    void form.handleSubmit(onSubmit)(e).catch((err) => {
+      setFeedbackMessage(loginErrorMessage(err))
+      setAuthStatus('error')
+      window.setTimeout(() => {
+        setAuthStatus('idle')
+        setFeedbackMessage(undefined)
+      }, ERROR_HOLD_MS)
+    })
   }
 
   async function handleForgotPassword() {

@@ -11,6 +11,10 @@ export type ApiHandler = (
   ctx: { params: Promise<RouteParams>; requestId: string },
 ) => Promise<Response>
 
+type ApiHandlerOptions = {
+  requireAdmin?: boolean
+}
+
 /** Normalize a dynamic route param to a single string. */
 export function routeParam(
   params: RouteParams,
@@ -22,14 +26,17 @@ export function routeParam(
   return value
 }
 
-export function withApiHandler(handler: ApiHandler): (
+export function withApiHandler(
+  handler: ApiHandler,
+  options: ApiHandlerOptions = {},
+): (
   request: Request,
   ctx: { params: Promise<RouteParams> },
 ) => Promise<Response> {
   return async (request, ctx) => {
     const requestId = crypto.randomUUID()
     try {
-      if (!isAdminConfigured()) {
+      if (options.requireAdmin !== false && !isAdminConfigured()) {
         throw serviceUnavailable(
           'Server database access is not configured (Firebase Admin credentials missing)',
         )

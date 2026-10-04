@@ -10,7 +10,7 @@ import type { LibraryBook, LibraryLoan, SchoolClass, Student } from '@/types'
 import type { LibraryBookInput, LibraryLoanInput } from '@/server/validators/school'
 
 export async function listLibraryBooks(session: SessionContext): Promise<LibraryBook[]> {
-  requirePermission(session, 'students.read')
+  requirePermission(session, 'library.manage')
   return queryCollection<LibraryBook>('libraryBooks', { limit: 500, orderBy: 'title' })
 }
 
@@ -48,7 +48,7 @@ export async function createLibraryBook(
 }
 
 export async function listLibraryLoans(session: SessionContext): Promise<LibraryLoan[]> {
-  requirePermission(session, 'students.read')
+  requirePermission(session, 'library.manage')
   return queryCollection<LibraryLoan>('libraryLoans', { limit: 1000, orderBy: 'borrowedAt', orderDirection: 'desc' })
 }
 

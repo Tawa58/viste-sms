@@ -12,6 +12,7 @@ import type {
 import type { DashboardService, StudentService } from '@/services/api/contracts'
 import { buildLiveDashboard } from '@/services/firestore/live-dashboard'
 import { firestoreSchool } from '@/services/firestore/school-repository'
+import { defaultAccountRoleForCategory } from '@/lib/staff-categories'
 
 class FirestoreStudentService implements StudentService {
   async list(opts?: { classId?: string }) {
@@ -127,7 +128,8 @@ export const firestoreCatalogService = {
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters')
     }
-    const created = await firestoreSchool.createStaff(rest)
+    const accountRole = rest.accountRole ?? defaultAccountRoleForCategory(rest.category)
+    const created = await firestoreSchool.createStaff({ ...rest, accountRole })
     const { createFirebaseAuthUser } = await import('@/services/firebase/auth-service')
     const { setDoc, doc } = await import('firebase/firestore')
     const { getFirestoreDb } = await import('@/services/firebase/app')
@@ -142,7 +144,7 @@ export const firestoreCatalogService = {
       id: authUser.uid,
       name: `${created.firstName} ${created.lastName}`,
       email: created.email.toLowerCase(),
-      role: 'TEACHER',
+      role: accountRole,
       title: created.title,
       department: created.department,
       employeeNumber: created.employeeNumber,
@@ -157,7 +159,7 @@ export const firestoreCatalogService = {
       staffId: created.id,
       email: created.email.toLowerCase(),
       password,
-      role: 'TEACHER',
+      role: accountRole,
       temporaryPassword: true,
       lastResetAt: new Date().toISOString().slice(0, 10),
       authUid: authUser.uid,
@@ -217,20 +219,22 @@ export const firestoreCatalogService = {
   async getStaffAccess(staffId: string) {
     const {
       listPermissions,
-      TEACHER_ASSIGNABLE_PERMISSIONS,
-      TEACHER_PERMISSION_GROUPS,
+      STAFF_ASSIGNABLE_PERMISSIONS,
+      STAFF_PERMISSION_GROUPS,
       resolveEffectivePermissions,
     } = await import('@/server/authorization/rbac-map')
     const member = await firestoreSchool.getStaff(staffId)
     if (!member) throw new Error('Staff not found')
+    const role = member.accountRole ?? defaultAccountRoleForCategory(member.category)
     const overrides = member.permissionOverrides ?? {}
-    const effective = resolveEffectivePermissions('TEACHER', overrides)
-    const assignable = [...TEACHER_ASSIGNABLE_PERMISSIONS]
+    const effective = resolveEffectivePermissions(role, overrides)
+    const assignable = [...STAFF_ASSIGNABLE_PERMISSIONS]
     return {
       staffId,
-      roleDefaults: listPermissions('TEACHER'),
+      role,
+      roleDefaults: listPermissions(role),
       assignable,
-      groups: TEACHER_PERMISSION_GROUPS.map((g) => ({
+      groups: STAFF_PERMISSION_GROUPS.map((g) => ({
         label: g.label,
         permissions: [...g.permissions],
       })),
@@ -240,13 +244,18 @@ export const firestoreCatalogService = {
     }
   },
   async updateStaffAccess(staffId: string, permissions: string[]) {
-    const { overridesFromTeacherSelection } = await import('@/server/authorization/rbac-map')
+    const { overridesFromStaffSelection } = await import('@/server/authorization/rbac-map')
     const { setDoc, doc, getDoc } = await import('firebase/firestore')
     const { getFirestoreDb } = await import('@/services/firebase/app')
+    const member = await firestoreSchool.getStaff(staffId)
+    if (!member) throw new Error('Staff not found')
     const ref = doc(getFirestoreDb(), 'staff', staffId)
     const snap = await getDoc(ref)
     if (!snap.exists()) throw new Error('Staff not found')
-    const overrides = overridesFromTeacherSelection(permissions)
+    const overrides = overridesFromStaffSelection(
+      member.accountRole ?? defaultAccountRoleForCategory(member.category),
+      permissions,
+    )
     await setDoc(
       ref,
       {
@@ -275,7 +284,7 @@ export const firestoreCatalogService = {
       staffId,
       email: member.email.toLowerCase(),
       password: nextPassword,
-      role: 'TEACHER',
+      role: member.accountRole ?? defaultAccountRoleForCategory(member.category),
       temporaryPassword: true,
       lastResetAt: new Date().toISOString().slice(0, 10),
     }

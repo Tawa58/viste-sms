@@ -136,7 +136,7 @@ function FeedCard({
 }
 
 export function DashboardPage() {
-  const { user } = useAuth()
+  const { user, permissions } = useAuth()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [enrollment, setEnrollment] = useState<{ month: string; students: number }[]>([])
@@ -210,11 +210,11 @@ export function DashboardPage() {
 
   const role = user?.role
   const isAdminView = role ? hasFullConsoleAccess(role) : false
-  const canFees = role ? canAccessPath(role, '/fees') : false
-  const canAudit = role ? canAccessPath(role, '/audit-logs') : false
-  const canTeachers = role ? canAccessPath(role, '/teachers') : false
+  const canFees = role ? canAccessPath(role, '/fees', permissions) : false
+  const canAudit = role ? canAccessPath(role, '/audit-logs', permissions) : false
+  const canTeachers = role ? canAccessPath(role, '/teachers', permissions) : false
   const quickActions = allQuickActions.filter((action) =>
-    role ? canAccessPath(role, action.to) : false,
+    role ? canAccessPath(role, action.to, permissions) : false,
   )
 
   return (

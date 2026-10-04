@@ -156,11 +156,91 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
   STUDENT,
 }
 
-/**
- * Permissions an admin may grant/deny on an individual teacher.
- * Excludes school-wide admin controls (users/roles/settings/audit).
- */
-export const TEACHER_ASSIGNABLE_PERMISSIONS: readonly Permission[] = [
+/** Individual staff access cannot grant account, role, school-settings, or audit administration. */
+export const STAFF_ASSIGNABLE_PERMISSIONS: readonly Permission[] = PERMISSIONS.filter(
+  (permission) =>
+    !(
+      [
+        'users.manage',
+        'roles.manage',
+        'settings.manage',
+        'audit.read',
+        'teachers.manage',
+        'staff.manage',
+      ] as Permission[]
+    ).includes(permission),
+)
+
+export const STAFF_PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
+  {
+    label: 'Students & families',
+    permissions: [
+      'students.read',
+      'students.create',
+      'students.update',
+      'students.archive',
+      'students.transfer',
+      'students.exempt',
+      'parents.read',
+      'parents.manage',
+    ],
+  },
+  {
+    label: 'Classes, subjects & activities',
+    permissions: [
+      'classes.read',
+      'classes.manage',
+      'subjects.read',
+      'subjects.manage',
+      'extracurricular.read',
+      'extracurricular.manage',
+    ],
+  },
+  {
+    label: 'Attendance & check-in',
+    permissions: ['attendance.read', 'attendance.create', 'attendance.update', 'checkin.self', 'checkin.manage'],
+  },
+  {
+    label: 'Exams & results',
+    permissions: [
+      'results.read',
+      'results.enter',
+      'results.update',
+      'results.approve',
+      'results.publish',
+      'results.lock',
+    ],
+  },
+  {
+    label: 'Fees & payments',
+    permissions: [
+      'fees.read',
+      'fees.create',
+      'fees.update',
+      'payments.read',
+      'payments.create',
+      'payments.reverse',
+    ],
+  },
+  {
+    label: 'Library',
+    permissions: ['library.manage'],
+  },
+  {
+    label: 'Staff, HR & payroll',
+    permissions: ['teachers.read', 'staff.read', 'hr.read', 'hr.manage', 'payroll.read', 'payroll.manage', 'payroll.approve'],
+  },
+  {
+    label: 'Finance',
+    permissions: ['finance.read', 'finance.manage'],
+  },
+]
+
+/** Backwards-compatible aliases for existing teacher access views. */
+export const TEACHER_ASSIGNABLE_PERMISSIONS = STAFF_ASSIGNABLE_PERMISSIONS
+export const TEACHER_PERMISSION_GROUPS = STAFF_PERMISSION_GROUPS
+
+const LEGACY_TEACHER_ASSIGNABLE_PERMISSIONS: readonly Permission[] = [
   'students.read',
   'students.create',
   'students.update',
@@ -190,57 +270,6 @@ export const TEACHER_ASSIGNABLE_PERMISSIONS: readonly Permission[] = [
   'results.publish',
 ]
 
-export const TEACHER_PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
-  {
-    label: 'Students',
-    permissions: [
-      'students.read',
-      'students.create',
-      'students.update',
-      'students.archive',
-      'students.transfer',
-      'students.exempt',
-    ],
-  },
-  {
-    label: 'Classes & subjects',
-    permissions: [
-      'classes.read',
-      'classes.manage',
-      'subjects.read',
-      'subjects.manage',
-      'extracurricular.read',
-      'extracurricular.manage',
-    ],
-  },
-  {
-    label: 'Attendance',
-    permissions: ['attendance.read', 'attendance.create', 'attendance.update'],
-  },
-  {
-    label: 'Exams & results',
-    permissions: [
-      'results.read',
-      'results.enter',
-      'results.update',
-      'results.approve',
-      'results.publish',
-    ],
-  },
-  {
-    label: 'Parents & fees',
-    permissions: [
-      'parents.read',
-      'parents.manage',
-      'fees.read',
-      'fees.create',
-      'fees.update',
-      'payments.read',
-      'payments.create',
-    ],
-  },
-]
-
 /** Map app paths → required permission (null = always allowed for signed-in users with route access). */
 export const PATH_PERMISSION: Record<string, Permission | null> = {
   '/dashboard': null,
@@ -261,7 +290,7 @@ export const PATH_PERMISSION: Record<string, Permission | null> = {
   '/users': 'users.manage',
   '/audit-logs': 'audit.read',
   '/inventory': 'settings.manage',
-  '/library': 'students.read',
+  '/library': 'library.manage',
   '/transport': 'students.read',
   '/check-in': 'checkin.self',
   '/staff-attendance': 'checkin.manage',
@@ -289,16 +318,30 @@ export type PermissionOverrides = {
   deny?: string[]
 }
 
+export function normalizePermissionOverrides(value: unknown): PermissionOverrides | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  return {
+    grant: Array.isArray(record.grant)
+      ? record.grant.filter((permission): permission is string => typeof permission === 'string')
+      : [],
+    deny: Array.isArray(record.deny)
+      ? record.deny.filter((permission): permission is string => typeof permission === 'string')
+      : [],
+  }
+}
+
 /** Role baseline ∪ grant − deny, clamped to known permissions. */
 export function resolveEffectivePermissions(
   role: UserRole,
   overrides?: PermissionOverrides | null,
 ): Permission[] {
   const base = new Set(listPermissions(role))
-  for (const raw of overrides?.grant ?? []) {
+  const normalized = normalizePermissionOverrides(overrides)
+  for (const raw of normalized?.grant ?? []) {
     if (isPermission(raw)) base.add(raw)
   }
-  for (const raw of overrides?.deny ?? []) {
+  for (const raw of normalized?.deny ?? []) {
     if (isPermission(raw)) base.delete(raw)
   }
   return PERMISSIONS.filter((p) => base.has(p))
@@ -310,18 +353,41 @@ export function resolveEffectivePermissions(
  */
 export function overridesFromTeacherSelection(selected: string[]): PermissionOverrides {
   const defaults = new Set(listPermissions('TEACHER'))
-  const assignable = new Set(TEACHER_ASSIGNABLE_PERMISSIONS)
+  const assignable = new Set(LEGACY_TEACHER_ASSIGNABLE_PERMISSIONS)
   const chosen = new Set(
     selected.filter((p): p is Permission => isPermission(p) && assignable.has(p)),
   )
 
   const grant: Permission[] = []
   const deny: Permission[] = []
-  for (const p of TEACHER_ASSIGNABLE_PERMISSIONS) {
+  for (const p of LEGACY_TEACHER_ASSIGNABLE_PERMISSIONS) {
     const on = chosen.has(p)
     const wasDefault = defaults.has(p)
     if (on && !wasDefault) grant.push(p)
     if (!on && wasDefault) deny.push(p)
+  }
+  return { grant, deny }
+}
+
+export function overridesFromStaffSelection(
+  role: UserRole,
+  selected: string[],
+): PermissionOverrides {
+  const defaults = new Set(listPermissions(role))
+  const assignable = new Set(STAFF_ASSIGNABLE_PERMISSIONS)
+  const chosen = new Set(
+    selected.filter(
+      (permission): permission is Permission =>
+        isPermission(permission) && assignable.has(permission),
+    ),
+  )
+  const grant: Permission[] = []
+  const deny: Permission[] = []
+  for (const permission of STAFF_ASSIGNABLE_PERMISSIONS) {
+    const enabled = chosen.has(permission)
+    const defaultEnabled = defaults.has(permission)
+    if (enabled && !defaultEnabled) grant.push(permission)
+    if (!enabled && defaultEnabled) deny.push(permission)
   }
   return { grant, deny }
 }

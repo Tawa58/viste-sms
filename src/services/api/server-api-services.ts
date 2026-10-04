@@ -485,6 +485,7 @@ export const apiCatalogService = {
   getStaffAccess: (staffId: string) =>
     apiFetch<{
       staffId: string
+      role: import('@/types').StaffAccountRole
       roleDefaults: string[]
       assignable: string[]
       groups: { label: string; permissions: string[] }[]
@@ -495,6 +496,7 @@ export const apiCatalogService = {
   updateStaffAccess: (staffId: string, permissions: string[]) =>
     apiFetch<{
       staffId: string
+      role: import('@/types').StaffAccountRole
       roleDefaults: string[]
       assignable: string[]
       groups: { label: string; permissions: string[] }[]

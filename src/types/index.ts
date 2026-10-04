@@ -14,6 +14,19 @@ export type UserRole =
   | 'HR_ADMIN'
   | 'FINANCE_VIEWER'
 
+export type StaffAccountRole = Extract<
+  UserRole,
+  | 'TEACHER'
+  | 'ACCOUNTANT'
+  | 'FINANCE_OFFICER'
+  | 'REGISTRAR'
+  | 'RECEPTIONIST'
+  | 'LIBRARIAN'
+  | 'TRANSPORT_MANAGER'
+  | 'HR_ADMIN'
+  | 'FINANCE_VIEWER'
+>
+
 export type StudentStatus =
   | 'ACTIVE'
   | 'INACTIVE'
@@ -187,7 +200,7 @@ export interface StaffLoginCredential {
   email: string
   /** Admin-issued temporary password (shown on login sheet until reset again). */
   password: string
-  role: Extract<UserRole, 'TEACHER' | 'SCHOOL_ADMIN' | 'PRINCIPAL' | 'ACCOUNTANT' | 'REGISTRAR'>
+  role: StaffAccountRole
   /** True when the password was issued by an admin and should be changed after first login. */
   temporaryPassword?: boolean
   lastResetAt?: string
@@ -263,6 +276,8 @@ export interface Staff {
   title: string
   /** Staff type (teacher, coach, medic, admin, …). */
   category?: StaffCategory
+  /** Portal permission role; intentionally separate from the HR staff category. */
+  accountRole?: StaffAccountRole
   status: 'ACTIVE' | 'INACTIVE'
   /** Present while suspended / inactivated by an admin. */
   suspension?: StaffSuspension | null
@@ -270,7 +285,7 @@ export interface Staff {
   classIds: string[]
   hireDate: string
   /**
-   * Per-teacher RBAC overrides (grant/deny on top of TEACHER role defaults).
+   * Per-staff RBAC overrides (grant/deny on top of the account role defaults).
    * Only admins with teachers.manage / roles.manage may edit.
    */
   permissionOverrides?: {

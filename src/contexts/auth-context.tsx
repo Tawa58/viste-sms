@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { authService } from '@/services/api'
 import { USE_MOCK_API } from '@/services/api/client'
 import { getFirebaseAuth } from '@/services/firebase/app'
@@ -90,34 +90,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const unsub = onAuthStateChanged(getFirebaseAuth(), async (firebaseUser) => {
-      try {
-        if (!firebaseUser || firebaseUser.isAnonymous) {
+    const unsub = onAuthStateChanged(
+      getFirebaseAuth(),
+      async (firebaseUser) => {
+        try {
+          if (!firebaseUser || firebaseUser.isAnonymous) {
+            setUser(null)
+            setPermissions([])
+            clearSession()
+            clearSchoolDataCache()
+            clearAuthTokenCache()
+            return
+          }
+          const { user: profile, permissions: perms } = await loadSession()
+          setUser(profile)
+          setPermissions(perms)
+          persistUser(profile, true, perms)
+          if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+            window.requestIdleCallback(() => prefetchSchoolData(), { timeout: 2500 })
+          } else {
+            setTimeout(() => prefetchSchoolData(), 300)
+          }
+        } catch (err) {
+          console.error('[auth] Could not restore the signed-in session', err)
           setUser(null)
           setPermissions([])
           clearSession()
           clearSchoolDataCache()
           clearAuthTokenCache()
-          return
+        } finally {
+          setLoading(false)
         }
-        const { user: profile, permissions: perms } = await loadSession()
-        setUser(profile)
-        setPermissions(perms)
-        persistUser(profile, true, perms)
-        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-          window.requestIdleCallback(() => prefetchSchoolData(), { timeout: 2500 })
-        } else {
-          setTimeout(() => prefetchSchoolData(), 300)
-        }
-      } catch (err) {
-        console.error(err)
+      },
+      (err) => {
+        console.error('[auth] Firebase auth state listener failed', err)
         setUser(null)
         setPermissions([])
         clearSession()
-      } finally {
+        clearSchoolDataCache()
+        clearAuthTokenCache()
         setLoading(false)
-      }
-    })
+      },
+    )
 
     return () => unsub()
   }, [])
@@ -129,15 +143,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       hasPermission: (permission: string) => permissions.includes(permission),
       async login(email, password, remember = true) {
-        await authService.login(email, password, remember)
-        const { user: profile, permissions: perms } = await loadSession()
-        setUser(profile)
-        setPermissions(perms)
-        persistUser(profile, remember, perms)
-        if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-          window.requestIdleCallback(() => prefetchSchoolData(), { timeout: 2500 })
-        } else {
-          setTimeout(() => prefetchSchoolData(), 300)
+        try {
+          await authService.login(email, password, remember)
+          const { user: profile, permissions: perms } = await loadSession()
+          setUser(profile)
+          setPermissions(perms)
+          persistUser(profile, remember, perms)
+          if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+            window.requestIdleCallback(() => prefetchSchoolData(), { timeout: 2500 })
+          } else {
+            setTimeout(() => prefetchSchoolData(), 300)
+          }
+        } catch (err) {
+          setUser(null)
+          setPermissions([])
+          clearSession()
+          clearSchoolDataCache()
+          clearAuthTokenCache()
+          if (!USE_MOCK_API) {
+            try {
+              await signOut(getFirebaseAuth())
+            } catch (signOutError) {
+              console.error('[auth] Could not clear Firebase session after login failure', signOutError)
+            }
+          }
+          throw err
         }
       },
       async logout() {

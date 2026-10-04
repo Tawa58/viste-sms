@@ -1,15 +1,17 @@
 import 'server-only'
 
-import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
-import { forbidden, unauthorized } from '@/server/errors'
+import { getAdminAuth, getAdminDb, isAdminConfigured } from '@/lib/firebase/admin'
+import { serviceUnavailable, unauthorized } from '@/server/errors'
 import {
   hasPermission,
+  normalizePermissionOverrides,
   requirePermission as assertPermission,
   resolveEffectivePermissions,
   type Permission,
   type PermissionOverrides,
 } from '@/server/authorization/permissions'
-import type { AuthUser, UserRole } from '@/types'
+import type { AuthUser, StaffAccountRole, UserRole } from '@/types'
+import { defaultAccountRoleForCategory, STAFF_ACCOUNT_ROLES } from '@/lib/staff-categories'
 
 export type SessionContext = {
   uid: string
@@ -50,6 +52,12 @@ function bootstrapEmails(): Set<string> {
 function sanitizeRole(role: unknown): UserRole | null {
   return typeof role === 'string' && (ALL_ROLES as string[]).includes(role)
     ? (role as UserRole)
+    : null
+}
+
+function sanitizeStaffRole(role: unknown): StaffAccountRole | null {
+  return STAFF_ACCOUNT_ROLES.some((option) => option.value === role)
+    ? (role as StaffAccountRole)
     : null
 }
 
@@ -143,10 +151,24 @@ export async function verifyBearerToken(request: Request): Promise<SessionContex
   const match = header.match(/^Bearer\s+(.+)$/i)
   if (!match?.[1]) throw unauthorized()
 
+  if (!isAdminConfigured()) {
+    throw serviceUnavailable(
+      'Server authentication is not configured (Firebase Admin credentials missing)',
+    )
+  }
+
+  let adminAuth
+  try {
+    adminAuth = getAdminAuth()
+  } catch (err) {
+    console.error('[auth] Firebase Admin initialization failed', err)
+    throw serviceUnavailable('Firebase authentication service is unavailable')
+  }
+
   let decoded
   try {
     // checkRevoked=false avoids an extra Firebase round-trip on every API call
-    decoded = await getAdminAuth().verifyIdToken(match[1], false)
+    decoded = await adminAuth.verifyIdToken(match[1], false)
   } catch {
     throw unauthorized('Invalid or expired token')
   }
@@ -162,38 +184,44 @@ export async function verifyBearerToken(request: Request): Promise<SessionContex
   const { remember } = await import('@/server/http/memo')
   return remember(cacheKey, 20_000, async () => {
     let profile = await loadOrCreateProfile(decoded.uid, email, decoded.name)
-    let overrides: PermissionOverrides | null = null
-    try {
-      const { getRoleOverrides } = await import('@/server/services/admin-users-service')
-      const schoolOverrides = await getRoleOverrides(profile.role)
-      if (schoolOverrides) overrides = schoolOverrides
-    } catch {
-      overrides = null
-    }
+    let staffOverrides: PermissionOverrides | null = null
     if (profile.staffId) {
       try {
         const { assertStaffAccountActive } = await import('@/server/services/staff-service')
         const staff = await assertStaffAccountActive(profile.staffId)
         if (staff) {
+          const role =
+            sanitizeStaffRole(staff.accountRole) ??
+            (profile.role === 'TEACHER'
+              ? defaultAccountRoleForCategory(staff.category)
+              : profile.role)
           // Keep HR fields from the staff directory (admin-managed) on the session profile.
           profile = {
             ...profile,
+            role,
             title: staff.title || profile.title,
             department: staff.department || profile.department,
             employeeNumber: staff.employeeNumber || profile.employeeNumber,
             phone: profile.phone || staff.phone,
           }
-        }
-        if (staff && profile.role === 'TEACHER') {
-          const staffOverrides = staff.permissionOverrides ?? null
-          overrides = {
-            grant: [...(overrides?.grant ?? []), ...(staffOverrides?.grant ?? [])],
-            deny: [...(overrides?.deny ?? []), ...(staffOverrides?.deny ?? [])],
-          }
+          staffOverrides = normalizePermissionOverrides(staff.permissionOverrides)
         }
       } catch (err) {
         // Re-throw AppError (e.g. ACCOUNT_SUSPENDED); ignore soft lookup failures
         if (err && typeof err === 'object' && 'statusCode' in err) throw err
+      }
+    }
+    let overrides: PermissionOverrides | null = null
+    try {
+      const { getRoleOverrides } = await import('@/server/services/admin-users-service')
+      overrides = normalizePermissionOverrides(await getRoleOverrides(profile.role))
+    } catch {
+      overrides = null
+    }
+    if (staffOverrides) {
+      overrides = {
+        grant: [...(overrides?.grant ?? []), ...(staffOverrides.grant ?? [])],
+        deny: [...(overrides?.deny ?? []), ...(staffOverrides.deny ?? [])],
       }
     }
     if (profile.role === 'STUDENT' && profile.studentId) {

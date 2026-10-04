@@ -5,6 +5,7 @@ import type { SessionContext } from '@/server/auth/session'
 import {
   hasPermission as roleHasPermission,
   listPermissions as listRolePermissions,
+  normalizePermissionOverrides,
   resolveEffectivePermissions,
   ROLE_PERMISSIONS,
   PERMISSIONS,
@@ -19,6 +20,7 @@ import {
 export {
   roleHasPermission as hasPermission,
   listRolePermissions as listPermissions,
+  normalizePermissionOverrides,
   resolveEffectivePermissions,
   ROLE_PERMISSIONS,
   PERMISSIONS,

@@ -69,6 +69,10 @@ export const PERMISSION_GROUPS: { label: string; permissions: string[] }[] = [
     permissions: ['finance.read', 'finance.manage'],
   },
   {
+    label: 'Check-in',
+    permissions: ['checkin.self', 'checkin.manage'],
+  },
+  {
     label: 'Administration',
     permissions: ['users.manage', 'roles.manage', 'settings.manage', 'audit.read'],
   },
