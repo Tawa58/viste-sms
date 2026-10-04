@@ -51,9 +51,16 @@ export function withApiHandler(
       })
     } catch (err) {
       const { status, body } = toErrorResponse(err, requestId)
+      const authStage =
+        err && typeof err === 'object' && 'authStage' in err
+          ? (err as { authStage?: unknown }).authStage
+          : undefined
       return Response.json(body, {
         status,
-        headers: { 'x-request-id': requestId },
+        headers: {
+          'x-request-id': requestId,
+          ...(typeof authStage === 'string' ? { 'x-auth-stage': authStage } : {}),
+        },
       })
     }
   }

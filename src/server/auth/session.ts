@@ -23,6 +23,19 @@ export type SessionContext = {
   token: { authTime?: number }
 }
 
+export type AuthSessionStage =
+  | 'AUTH TOKEN MISSING'
+  | 'AUTH TOKEN RECEIVED'
+  | 'TOKEN VERIFIED'
+  | 'USER PROFILE LOOKUP'
+  | 'USER PROFILE RESOLVED'
+  | 'STAFF PROFILE LOOKUP'
+  | 'STAFF PROFILE RESOLVED'
+  | 'ROLE RESOLVED'
+  | 'ROLE PERMISSIONS LOOKUP'
+  | 'PERMISSIONS RESOLVED'
+  | 'SESSION READY'
+
 const ALL_ROLES: UserRole[] = [
   'SUPER_ADMIN',
   'SCHOOL_ADMIN',
@@ -146,10 +159,17 @@ async function loadOrCreateProfile(
  * New profiles default to STUDENT unless email is in BOOTSTRAP_ADMIN_EMAILS → SUPER_ADMIN.
  * NEVER defaults to SCHOOL_ADMIN.
  */
-export async function verifyBearerToken(request: Request): Promise<SessionContext> {
+export async function verifyBearerToken(
+  request: Request,
+  onStage?: (stage: AuthSessionStage) => void,
+): Promise<SessionContext> {
   const header = request.headers.get('authorization') ?? ''
   const match = header.match(/^Bearer\s+(.+)$/i)
-  if (!match?.[1]) throw unauthorized()
+  if (!match?.[1]) {
+    onStage?.('AUTH TOKEN MISSING')
+    throw unauthorized()
+  }
+  onStage?.('AUTH TOKEN RECEIVED')
 
   if (!isAdminConfigured()) {
     throw serviceUnavailable(
@@ -172,6 +192,7 @@ export async function verifyBearerToken(request: Request): Promise<SessionContex
   } catch {
     throw unauthorized('Invalid or expired token')
   }
+  onStage?.('TOKEN VERIFIED')
 
   if (decoded.firebase?.sign_in_provider === 'anonymous') {
     throw unauthorized('Anonymous sessions are not allowed for API access')
@@ -183,9 +204,12 @@ export async function verifyBearerToken(request: Request): Promise<SessionContex
   const cacheKey = `session:${decoded.uid}`
   const { remember } = await import('@/server/http/memo')
   return remember(cacheKey, 20_000, async () => {
+    onStage?.('USER PROFILE LOOKUP')
     let profile = await loadOrCreateProfile(decoded.uid, email, decoded.name)
+    onStage?.('USER PROFILE RESOLVED')
     let staffOverrides: PermissionOverrides | null = null
     if (profile.staffId) {
+      onStage?.('STAFF PROFILE LOOKUP')
       try {
         const { assertStaffAccountActive } = await import('@/server/services/staff-service')
         const staff = await assertStaffAccountActive(profile.staffId)
@@ -210,8 +234,11 @@ export async function verifyBearerToken(request: Request): Promise<SessionContex
         // Re-throw AppError (e.g. ACCOUNT_SUSPENDED); ignore soft lookup failures
         if (err && typeof err === 'object' && 'statusCode' in err) throw err
       }
+      onStage?.('STAFF PROFILE RESOLVED')
     }
+    onStage?.('ROLE RESOLVED')
     let overrides: PermissionOverrides | null = null
+    onStage?.('ROLE PERMISSIONS LOOKUP')
     try {
       const { getRoleOverrides } = await import('@/server/services/admin-users-service')
       overrides = normalizePermissionOverrides(await getRoleOverrides(profile.role))
@@ -231,7 +258,8 @@ export async function verifyBearerToken(request: Request): Promise<SessionContex
       await assertStudentPortalActive(profile.studentId)
     }
     const permissions = resolveEffectivePermissions(profile.role, overrides)
-    return {
+    onStage?.('PERMISSIONS RESOLVED')
+    const session = {
       uid: decoded.uid,
       email,
       role: profile.role,
@@ -239,6 +267,8 @@ export async function verifyBearerToken(request: Request): Promise<SessionContex
       permissions,
       token: { authTime: decoded.auth_time },
     }
+    onStage?.('SESSION READY')
+    return session
   })
 }
 
