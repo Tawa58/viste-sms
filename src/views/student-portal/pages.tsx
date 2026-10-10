@@ -720,10 +720,10 @@ export function MyFeesPage() {
       {({ fees }) => (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <StatCard label="Total billed" value={money(fees.billed, fees.currency)} icon={Receipt} />
-            <StatCard label="Paid" value={money(fees.paid, fees.currency)} icon={Wallet} tone="success" />
+            <StatCard label="Current period billed" value={money(fees.billed, fees.currency)} icon={Receipt} />
+            <StatCard label="Current period paid" value={money(fees.paid, fees.currency)} icon={Wallet} tone="success" />
             <StatCard
-              label="Balance"
+              label="Current period balance"
               value={money(fees.balance, fees.currency)}
               hint={fees.nextDueDate && fees.balance > 0 ? `Due ${shortDate(fees.nextDueDate)}` : undefined}
               icon={Wallet}

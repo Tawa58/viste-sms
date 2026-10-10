@@ -8,6 +8,7 @@ import { forbidden } from '@/server/errors'
 import { queryCollection } from '@/server/repositories/firestore-repo'
 import { listInvoices, listPayments, resolveBillingTerm } from '@/server/services/finance-service'
 import { getGradingScaleForEducationLevel, gradeFromScore } from '@/server/services/grading-service'
+import { currentMonthPeriod, invoicesForBillingPeriod } from '@/lib/fees'
 import { getResultsPortal } from '@/server/services/results-service'
 import { getFeePolicy, getSchoolProfile } from '@/server/services/school-settings-service'
 import type {
@@ -114,16 +115,21 @@ async function loadAttendance(studentId: string, term: Term | null) {
   return summarizeAttendance(records, term)
 }
 
-async function loadFees(session: SessionContext, studentId: string): Promise<StudentPortalFees> {
+async function loadFees(
+  session: SessionContext,
+  studentId: string,
+  term: Term | null,
+): Promise<StudentPortalFees> {
   const [invoices, payments, policy] = await Promise.all([
     listInvoices(session, studentId),
     listPayments(session, studentId),
     getFeePolicy(),
   ])
-  const billed = invoices.reduce((sum, i) => sum + (i.total || 0), 0)
-  const paid = invoices.reduce((sum, i) => sum + (i.paid || 0), 0)
+  const payableInvoices = invoicesForBillingPeriod(invoices, term?.id, currentMonthPeriod())
+  const billed = payableInvoices.reduce((sum, i) => sum + (i.total || 0), 0)
+  const paid = payableInvoices.reduce((sum, i) => sum + (i.paid || 0), 0)
   const balance = Math.max(0, billed - paid)
-  const nextDueDate = invoices
+  const nextDueDate = payableInvoices
     .filter((i) => i.total - i.paid > 0 && i.dueDate)
     .map((i) => i.dueDate)
     .sort()[0]
@@ -506,7 +512,7 @@ export async function getStudentPortalBundle(session: SessionContext): Promise<S
   const [attendance, fees, academics, termComments, scale, school, announcements, documents] =
     await Promise.all([
       optional(() => loadAttendance(studentId, term), summarizeAttendance([], null)),
-      loadFees(session, studentId),
+      loadFees(session, studentId, term),
       optional<Academics | null>(
         () => loadAcademics(studentId, student.classId, student.streamId),
         null,

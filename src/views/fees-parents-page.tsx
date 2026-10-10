@@ -29,8 +29,9 @@ import { notify } from '@/lib/notify'
 import { canManageStudents } from '@/lib/roles'
 import { downloadParentsPdf, type ParentPdfVariant } from '@/lib/parents-pdf'
 import { educationLevelName } from '@/lib/education-levels'
+import { balanceForBillingPeriod, currentBillingTerm, currentMonthPeriod } from '@/lib/fees'
 import { formatCurrency, fullName } from '@/lib/utils'
-import type { Invoice, SchoolClass, Student, Guardian } from '@/types'
+import type { Invoice, SchoolClass, Student, Guardian, Term } from '@/types'
 
 export function ParentsPage() {
   const [loading, setLoading] = useState(true)
@@ -218,6 +219,7 @@ export function ParentDetailPage() {
   const [guardian, setGuardian] = useState<Guardian | undefined>()
   const [students, setStudents] = useState<Student[]>([])
   const [classes, setClasses] = useState<SchoolClass[]>([])
+  const [terms, setTerms] = useState<Term[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
 
   useEffect(() => {
@@ -225,12 +227,14 @@ export function ParentDetailPage() {
     Promise.all([
       catalogService.getGuardian(id),
       studentService.list(),
-      classService.list().catch(() => [] as SchoolClass[]),
+      catalogService.getTermsAndClasses(),
       catalogService.getInvoices(),
-    ]).then(([g, s, c, inv]) => {
+    ]).then(([g, s, schoolCatalog, inv]) => {
+      const { classes: c, terms: termRows } = schoolCatalog
       setGuardian(g)
       setStudents(s.filter((x) => g?.studentIds.includes(x.id)))
       setClasses(c)
+      setTerms(termRows)
       setInvoices(inv.filter((i) => g?.studentIds.includes(i.studentId)))
       setLoading(false)
     })
@@ -258,7 +262,12 @@ export function ParentDetailPage() {
   if (loading) return <LoadingState message="Loading guardian profile…" />
   if (!guardian) return <p>Guardian not found.</p>
 
-  const outstanding = invoices.reduce((sum, i) => sum + (i.total - i.paid), 0)
+  const billingTerm = currentBillingTerm(terms)
+  const outstanding = balanceForBillingPeriod(
+    invoices,
+    billingTerm?.id,
+    currentMonthPeriod(),
+  )
 
   return (
     <div className="space-y-5">
@@ -305,7 +314,8 @@ export function ParentDetailPage() {
               </div>
             ) : null}
             <p className="pt-1 text-xs text-muted-foreground">
-              Fee outstanding across linked students:{' '}
+              Current-term balance across linked students
+              {billingTerm ? ` · ${billingTerm.name}` : ''}:{' '}
               <span className="font-medium text-foreground">{formatCurrency(outstanding)}</span>
             </p>
           </dl>

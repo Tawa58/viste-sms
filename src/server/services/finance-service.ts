@@ -18,6 +18,8 @@ import {
   monthlyInvoiceId,
   termInvoiceId,
   invoiceBlocksPortal,
+  invoicesForBillingPeriod,
+  currentMonthPeriod,
   scholarshipAdjustedFeeAmount,
 } from '@/lib/fees'
 import type { PaymentCreateInput } from '@/server/validators/school'
@@ -622,17 +624,24 @@ export async function getInvoice(session: SessionContext, id: string): Promise<I
 
 /** Fee clearance ignores future monthly instalments while keeping current fees enforceable. */
 export async function isFeeCleared(studentId: string): Promise<boolean> {
-  const invoices = await getAdminDb()
-    .collection('invoices')
-    .where('studentId', '==', studentId)
-    .get()
+  const [invoices, term] = await Promise.all([
+    getAdminDb()
+      .collection('invoices')
+      .where('studentId', '==', studentId)
+      .get(),
+    resolveBillingTerm(),
+  ])
 
   if (invoices.empty) return true
 
-  for (const doc of invoices.docs) {
-    const inv = doc.data() as Invoice
+  const currentInvoices = invoicesForBillingPeriod(
+    invoices.docs.map((doc) => ({ ...(doc.data() as Invoice), id: doc.id })),
+    term.id,
+    currentMonthPeriod(),
+  )
+  for (const inv of currentInvoices) {
     if (!invoiceBlocksPortal(inv)) continue
-    const paid = await computeConfirmedPaid(doc.id)
+    const paid = await computeConfirmedPaid(inv.id)
     const outstanding = Math.max(0, (inv.total ?? 0) - paid)
     if (outstanding > 0) return false
   }

@@ -29,7 +29,14 @@ import { useAuth } from '@/contexts/auth-context'
 import { notify } from '@/lib/notify'
 import { canEditStudentLimited, canManageStudents } from '@/lib/roles'
 import { educationLevelName } from '@/lib/education-levels'
-import { feeCategoryFor, feeCategoryLabel, paymentPlanLabel } from '@/lib/fees'
+import {
+  balanceForBillingPeriod,
+  currentBillingTerm,
+  currentMonthPeriod,
+  feeCategoryFor,
+  feeCategoryLabel,
+  paymentPlanLabel,
+} from '@/lib/fees'
 import { catalogService, studentService } from '@/services/api'
 import { formatCurrency, formatDate, fullName } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
@@ -59,6 +66,7 @@ export function StudentDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const [student, setStudent] = useState<Student | undefined>()
   const [classes, setClasses] = useState<SchoolClass[]>([])
+  const [terms, setTerms] = useState<import('@/types').Term[]>([])
   const [streams, setStreams] = useState<Stream[]>([])
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [sports, setSports] = useState<import('@/types').Sport[]>([])
@@ -106,7 +114,7 @@ export function StudentDetailPage() {
     if (!id) return
     Promise.all([
       studentService.getById(id),
-      catalogService.getClasses(),
+      catalogService.getTermsAndClasses(),
       catalogService.getStreams(),
       catalogService.getSubjects(),
       catalogService.getSports?.() ?? Promise.resolve([]),
@@ -119,9 +127,10 @@ export function StudentDetailPage() {
       studentService.listExemptions?.(id) ?? Promise.resolve([]),
       studentService.listScholarships?.(id) ?? Promise.resolve([]),
       studentService.listTransfers?.(id) ?? Promise.resolve([]),
-    ]).then(([s, c, st, sub, sp, cl, ho, g, a, inv, m, ex, sch, xf]) => {
+    ]).then(([s, schoolCatalog, st, sub, sp, cl, ho, g, a, inv, m, ex, sch, xf]) => {
       setStudent(s)
-      setClasses(c)
+      setClasses(schoolCatalog.classes)
+      setTerms(schoolCatalog.terms)
       setStreams(st)
       setSubjects(sub)
       setSports(sp)
@@ -412,7 +421,12 @@ export function StudentDetailPage() {
   const attendancePct = attendance.length
     ? Math.round((present / attendance.length) * 100)
     : 0
-  const outstanding = invoices.reduce((sum, i) => sum + (i.total - i.paid), 0)
+  const billingTerm = currentBillingTerm(terms)
+  const outstanding = balanceForBillingPeriod(
+    invoices,
+    billingTerm?.id,
+    currentMonthPeriod(),
+  )
   const enrolledSubjects = subjects.filter((s) => student.subjectIds.includes(s.id))
 
   return (
@@ -584,7 +598,10 @@ export function StudentDetailPage() {
             </h3>
             <ul className="space-y-1.5 text-sm">
               <li>Attendance {attendancePct}%</li>
-              <li>Outstanding {formatCurrency(outstanding)}</li>
+              <li>
+                Current term balance {formatCurrency(outstanding)}
+                {billingTerm ? ` · ${billingTerm.name}` : ''}
+              </li>
               <li>{enrolledSubjects.length} enrolled subjects</li>
             </ul>
           </section>

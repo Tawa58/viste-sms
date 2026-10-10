@@ -74,8 +74,8 @@ export function paymentPlanLabel(plan: PaymentPlan | undefined | null) {
 }
 
 /** Match invoice billing: the active term, otherwise the next upcoming term, otherwise the latest term. */
-export function currentBillingTerm(
-  terms: Pick<Term, 'id' | 'startDate' | 'endDate'>[],
+export function currentBillingTerm<T extends Pick<Term, 'id' | 'startDate' | 'endDate'>>(
+  terms: T[],
   today = new Date().toISOString().slice(0, 10),
 ) {
   const ordered = [...terms].sort((a, b) => a.startDate.localeCompare(b.startDate))
@@ -83,6 +83,45 @@ export function currentBillingTerm(
     ordered.find((term) => term.startDate <= today && today <= term.endDate) ??
     ordered.find((term) => term.startDate > today) ??
     ordered[ordered.length - 1]
+  )
+}
+
+export function currentMonthPeriod(date = new Date()) {
+  return date.toLocaleDateString('en-GB', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+/** Invoices that make up the current payable balance, excluding other terms and months. */
+export function invoicesForBillingPeriod<T extends Pick<
+  import('@/types').Invoice,
+  'termId' | 'plan' | 'period'
+>>(
+  invoices: T[],
+  termId: string | undefined,
+  month: string | null = currentMonthPeriod(),
+): T[] {
+  if (!termId) return []
+  return invoices.filter(
+    (invoice) =>
+      invoice.termId === termId &&
+      (invoice.plan !== 'MONTHLY' || month === null || invoice.period === month),
+  )
+}
+
+export function balanceForBillingPeriod(
+  invoices: Pick<
+    import('@/types').Invoice,
+    'termId' | 'plan' | 'period' | 'total' | 'paid'
+  >[],
+  termId: string | undefined,
+  month: string | null = currentMonthPeriod(),
+) {
+  return invoicesForBillingPeriod(invoices, termId, month).reduce(
+    (balance, invoice) => balance + Math.max(0, invoice.total - invoice.paid),
+    0,
   )
 }
 

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   currentBillingTerm,
+  balanceForBillingPeriod,
   feeAmountFor,
   feeCategoryFor,
+  invoicesForBillingPeriod,
   invoiceBlocksPortal,
   monthlyInstalments,
   monthlyInvoiceId,
@@ -33,6 +35,49 @@ describe('currentBillingTerm', () => {
 
   it('returns no term when the calendar is empty', () => {
     expect(currentBillingTerm([], '2026-01-01')).toBeUndefined()
+  })
+})
+
+describe('invoicesForBillingPeriod', () => {
+  const invoices = [
+    { id: 'current-term', termId: 'term-2', plan: 'TERMLY' as const },
+    { id: 'current-month', termId: 'term-2', plan: 'MONTHLY' as const, period: 'June 2026' },
+    { id: 'next-month', termId: 'term-2', plan: 'MONTHLY' as const, period: 'July 2026' },
+    { id: 'past-term', termId: 'term-1', plan: 'TERMLY' as const },
+    { id: 'legacy', plan: 'TERMLY' as const },
+  ]
+
+  it('includes current-term billing and only the current monthly invoice', () => {
+    expect(invoicesForBillingPeriod(invoices, 'term-2', 'June 2026').map((row) => row.id)).toEqual([
+      'current-term',
+      'current-month',
+    ])
+  })
+
+  it('does not treat invoices from another term or without a term as current debt', () => {
+    expect(invoicesForBillingPeriod(invoices, 'term-3', 'June 2026')).toEqual([])
+    expect(invoicesForBillingPeriod(invoices, undefined, 'June 2026')).toEqual([])
+  })
+
+  it('includes all monthly invoices when reviewing a past term', () => {
+    expect(invoicesForBillingPeriod(invoices, 'term-2', null).map((row) => row.id)).toEqual([
+      'current-term',
+      'current-month',
+      'next-month',
+    ])
+  })
+
+  it('reports the remainder for one term without adding another term invoice', () => {
+    expect(
+      balanceForBillingPeriod(
+        [
+          { termId: 'term-2', plan: 'TERMLY' as const, total: 456, paid: 300 },
+          { termId: 'term-1', plan: 'TERMLY' as const, total: 684, paid: 0 },
+        ],
+        'term-2',
+        'June 2026',
+      ),
+    ).toBe(156)
   })
 })
 

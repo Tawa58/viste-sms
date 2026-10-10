@@ -48,9 +48,11 @@ import {
   FEE_LEVELS,
   PAYMENT_PLANS,
   currentBillingTerm,
+  currentMonthPeriod,
   feeCategoryFor,
   feeCategoryLabel,
   hasAnyFee,
+  invoicesForBillingPeriod,
   paymentPlanLabel,
 } from '@/lib/fees'
 import { copyText } from '@/lib/native-app'
@@ -122,10 +124,6 @@ function formatMoney(amount: number, currency: string) {
 
 function invoiceBalance(invoice: Invoice) {
   return Math.max(0, Math.round((invoice.total - invoice.paid) * 100) / 100)
-}
-
-function currentMonthPeriod(date = new Date()) {
-  return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
 }
 
 export function FeesPage() {
@@ -206,12 +204,12 @@ export function FeesPage() {
   )
   const periodInvoices = useMemo(
     () =>
-      termInvoices.filter((invoice) =>
-        invoice.plan === 'MONTHLY'
-          ? invoice.period === currentMonthPeriod()
-          : true,
+      invoicesForBillingPeriod(
+        termInvoices,
+        selectedTermId,
+        selectedTerm?.id === currentTerm?.id ? currentMonthPeriod() : null,
       ),
-    [termInvoices],
+    [termInvoices, selectedTermId, selectedTerm, currentTerm],
   )
 
   const accounts = useMemo<StudentAccount[]>(() => {
@@ -228,10 +226,11 @@ export function FeesPage() {
           a.dueDate.localeCompare(b.dueDate),
         )
         const plan: PaymentPlan = student.paymentPlan ?? 'TERMLY'
-        const displayedInvoices =
-          plan === 'MONTHLY'
-            ? list.filter((invoice) => invoice.plan === 'MONTHLY' && invoice.period === currentMonthPeriod())
-            : list.filter((invoice) => invoice.plan !== 'MONTHLY')
+        const displayedInvoices = invoicesForBillingPeriod(
+          list,
+          selectedTermId === UNASSIGNED_TERM_ID ? undefined : selectedTermId,
+          selectedTerm?.id === currentTerm?.id ? currentMonthPeriod() : null,
+        )
         const billed = displayedInvoices.reduce((sum, i) => sum + i.total, 0)
         const paid = displayedInvoices.reduce((sum, i) => sum + i.paid, 0)
         const balance = displayedInvoices.reduce((sum, i) => sum + invoiceBalance(i), 0)
@@ -258,7 +257,7 @@ export function FeesPage() {
         }
       })
       .sort((a, b) => fullName(a.student).localeCompare(fullName(b.student)))
-  }, [students, termInvoices, classes])
+  }, [students, termInvoices, classes, selectedTermId, selectedTerm, currentTerm])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -483,7 +482,9 @@ export function FeesPage() {
           <CardTitle>Student accounts</CardTitle>
           <CardDescription>
             {selectedTerm
-              ? `Termly invoices show the selected term balance. Monthly-plan balances show this month only. Select another term to review it.`
+              ? selectedTerm.id === currentTerm?.id
+                ? `Termly invoices show the selected term balance. Monthly-plan balances show this month only. Select another term to review it.`
+                : `Balances include all monthly and termly invoices in ${selectedTerm.name}.`
               : selectedTermId === UNASSIGNED_TERM_ID
                 ? 'These invoices do not have an academic term recorded; they are kept separate from current-term balances.'
                 : 'No academic terms are configured, so term-scoped balances cannot be shown.'}{' '}
@@ -590,7 +591,11 @@ export function FeesPage() {
                         <p>{feeCategoryLabel(a.category)}</p>
                         <p className="text-muted-foreground">
                           {paymentPlanLabel(a.plan)} plan
-                          {a.plan === 'MONTHLY' ? ` · ${currentMonthPeriod()}` : ''}
+                          {a.plan === 'MONTHLY'
+                            ? selectedTerm?.id === currentTerm?.id
+                              ? ` · ${currentMonthPeriod()}`
+                              : ' · term total'
+                            : ''}
                         </p>
                       </DataTableCell>
                       <DataTableCell className="text-right tabular-nums">

@@ -2,14 +2,18 @@ import 'server-only'
 
 import { randomInt } from 'node:crypto'
 import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
-import { invoiceBlocksPortal } from '@/lib/fees'
+import {
+  currentMonthPeriod,
+  invoiceBlocksPortal,
+  invoicesForBillingPeriod,
+} from '@/lib/fees'
 import { writeAuditLog } from '@/server/audit/logger'
 import type { SessionContext } from '@/server/auth/session'
 import { requirePermission } from '@/server/authorization/permissions'
 import { AppError, badRequest, notFound } from '@/server/errors'
 import { forget } from '@/server/http/memo'
 import { getDoc, setDoc } from '@/server/repositories/firestore-repo'
-import { computeConfirmedPaid } from '@/server/services/finance-service'
+import { computeConfirmedPaid, resolveBillingTerm } from '@/server/services/finance-service'
 import {
   currentPortalMonth,
   formatPortalMonth,
@@ -69,21 +73,28 @@ function rowStatus(row: PortalRow | null): StudentPortalStatus {
 async function portalFeeStatus(
   studentId: string,
 ): Promise<{ cleared: boolean; message?: string }> {
-  const invoices = await getAdminDb()
-    .collection('invoices')
-    .where('studentId', '==', studentId)
-    .get()
+  const [invoices, term] = await Promise.all([
+    getAdminDb()
+      .collection('invoices')
+      .where('studentId', '==', studentId)
+      .get(),
+    resolveBillingTerm(),
+  ])
   if (invoices.empty) {
     return {
       cleared: false,
       message: 'No fee invoice on record. Record the fee payment before issuing a code.',
     }
   }
+  const currentInvoices = invoicesForBillingPeriod(
+    invoices.docs.map((doc) => ({ ...(doc.data() as Invoice), id: doc.id })),
+    term.id,
+    currentMonthPeriod(),
+  )
   let outstanding = 0
-  for (const doc of invoices.docs) {
-    const inv = doc.data() as Invoice
+  for (const inv of currentInvoices) {
     if (!invoiceBlocksPortal(inv)) continue
-    const paid = await computeConfirmedPaid(doc.id)
+    const paid = await computeConfirmedPaid(inv.id)
     outstanding += Math.max(0, (inv.total ?? 0) - paid)
   }
   if (outstanding > 0) {
