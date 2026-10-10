@@ -1,4 +1,5 @@
 import type { DashboardStats, Payment, Staff, Student } from '@/types'
+import { invoiceBalance } from '@/lib/fees'
 import { firestoreSchool } from './school-repository'
 
 function monthKey(isoDate: string): string {
@@ -39,7 +40,7 @@ export async function buildLiveDashboard() {
   const activeStudents = students.filter((s) => s.status === 'ACTIVE')
   const activeTeachers = staff.filter((s) => s.status === 'ACTIVE')
 
-  const outstandingFees = invoices.reduce((sum, i) => sum + (i.total - i.paid), 0)
+  const outstandingFees = invoices.reduce((sum, invoice) => sum + invoiceBalance(invoice), 0)
   const feesCollected = payments
     .filter((p) => p.status === 'CONFIRMED')
     .reduce((sum, p) => sum + p.amount, 0)
@@ -108,7 +109,7 @@ export async function buildLiveDashboard() {
   for (const inv of invoices) {
     const key = monthKey(inv.dueDate)
     const slot = feeByMonth.get(key)
-    if (slot) slot.outstanding += Math.max(0, inv.total - inv.paid)
+    if (slot) slot.outstanding += invoiceBalance(inv)
   }
   const feeCollection = months.map((month) => ({
     month,

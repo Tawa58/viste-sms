@@ -21,6 +21,7 @@ import {
   invoicesForBillingPeriod,
   currentMonthPeriod,
   scholarshipAdjustedFeeAmount,
+  invoiceBalance,
 } from '@/lib/fees'
 import type { PaymentCreateInput } from '@/server/validators/school'
 import type {
@@ -38,8 +39,13 @@ import type {
 export type InvoiceDto = Invoice
 export type PaymentDto = Payment
 
-function invoiceStatus(total: number, paid: number, dueDate: string): Invoice['status'] {
-  if (paid >= total) return 'PAID'
+function invoiceStatus(
+  total: number,
+  paid: number,
+  dueDate: string,
+  scholarshipAmount = 0,
+): Invoice['status'] {
+  if (paid + scholarshipAmount >= total) return 'PAID'
   if (paid <= 0) {
     return Date.parse(dueDate) < Date.now() ? 'OVERDUE' : 'OPEN'
   }
@@ -48,7 +54,15 @@ function invoiceStatus(total: number, paid: number, dueDate: string): Invoice['s
 
 /** Stored status goes stale as due dates pass, so recompute it on every read. */
 function withLiveStatus(invoice: Invoice): Invoice {
-  return { ...invoice, status: invoiceStatus(invoice.total, invoice.paid, invoice.dueDate) }
+  return {
+    ...invoice,
+    status: invoiceStatus(
+      invoice.total,
+      invoice.paid,
+      invoice.dueDate,
+      invoice.scholarshipAmount,
+    ),
+  }
 }
 
 function roundMoney(value: number) {
@@ -100,7 +114,7 @@ function planInvoiceIds(termId: string, studentId: string, plan: PaymentPlan): s
   )
 }
 
-/** Termly: one invoice. Monthly: the first month plus every month that has started. */
+/** Termly: one invoice. Monthly: each scheduled instalment, including future months. */
 function plannedInvoices(
   student: Student,
   term: Term,
@@ -126,7 +140,7 @@ function plannedInvoices(
     .filter((m) =>
       currentMonthOnly
         ? m.issueDate.slice(0, 7) === currentMonth && m.issueDate <= today
-        : m.instalment === 1 || m.issueDate <= today,
+        : true,
     )
     .map((m) => ({
       id: monthlyInvoiceId(term.id, student.id, m.instalment),
@@ -193,23 +207,29 @@ async function billStudentForTerm(
     const invoicesToBill = currentMonthOnly
       ? planned
       : plannedInvoices(student, term, policy, plan)
-    const amounts = invoicesToBill.map((period) =>
+    const adjustedAmounts = invoicesToBill.map((period) =>
       scholarshipAdjustedFeeAmount(
         baseAmount,
         period.coverageStart,
         period.coverageEnd,
         scholarships,
+        term.id,
       ),
+    )
+    const amounts = invoicesToBill.map(() => baseAmount)
+    const scholarshipAmounts = adjustedAmounts.map((adjusted) =>
+      roundMoney(baseAmount - adjusted),
     )
     const snaps = await tx.getAll(...invoicesToBill.map((p) => invoicesRef.doc(p.id)))
 
     const repriced = new Map<string, number>()
     for (const [index, snap] of snaps.entries()) {
       const amount = amounts[index]!
-      if (!snap.exists || (baseAmount <= 0 && amount <= 0)) continue
+      if (!snap.exists || baseAmount <= 0) continue
       const existing = snap.data() as Invoice
       if (
         existing.total === amount &&
+        (existing.scholarshipAmount ?? 0) === scholarshipAmounts[index] &&
         existing.category === category &&
         (existing.plan ?? 'TERMLY') === plan
       ) {
@@ -234,6 +254,7 @@ async function billStudentForTerm(
     invoicesToBill.forEach((p, i) => {
       const snap = snaps[i]!
       const amount = amounts[i]!
+      const scholarshipAmount = scholarshipAmounts[i]!
       if (!snap.exists) {
         if (student.status !== 'ACTIVE') return
         const invoice: Invoice = {
@@ -244,7 +265,8 @@ async function billStudentForTerm(
           studentId: student.id,
           total: amount,
           paid: 0,
-          status: invoiceStatus(amount, 0, p.dueDate),
+          scholarshipAmount,
+          status: invoiceStatus(amount, 0, p.dueDate, scholarshipAmount),
           termId: term.id,
           termName: term.name,
           category,
@@ -261,10 +283,11 @@ async function billStudentForTerm(
       tx.set(snap.ref, {
         ...existing,
         total: amount,
+        scholarshipAmount,
         category,
         plan,
         paid,
-        status: invoiceStatus(amount, paid, existing.dueDate),
+        status: invoiceStatus(amount, paid, existing.dueDate, scholarshipAmount),
       })
       updated += 1
     })
@@ -401,12 +424,17 @@ export async function raiseMonthlyInvoices(): Promise<TermBillingResult | null> 
 }
 
 /**
- * Keep the student's current-term invoice in line with their fee category after
- * registration or a profile edit. Never blocks the student save.
+ * Keep the student's term invoice in line with fees and scholarship coverage.
+ * Ordinary profile sync remains non-blocking; a selected scholarship term must report failures.
  */
-export async function syncStudentTermInvoice(student: Student): Promise<void> {
+export async function syncStudentTermInvoice(
+  student: Student,
+  termId?: string,
+): Promise<void> {
   try {
-    const [term, policy] = await Promise.all([resolveBillingTerm(), getFeePolicy()])
+    const [currentTerm, policy] = await Promise.all([resolveBillingTerm(), getFeePolicy()])
+    const term = termId ? await getDoc<Term>('terms', termId) : currentTerm
+    if (!term) throw new Error(`Scholarship term not found: ${termId}`)
     let level = student.educationLevelId
     if (!level) {
       const cls = await getDoc<SchoolClass>('classes', student.classId)
@@ -415,6 +443,7 @@ export async function syncStudentTermInvoice(student: Student): Promise<void> {
     await billStudentForTerm(student, level, term, policy)
   } catch (err) {
     console.error('[fees] could not sync term invoice', student.id, err)
+    if (termId) throw err
   }
 }
 
@@ -503,7 +532,12 @@ export async function createPayment(
   session: SessionContext,
   input: PaymentCreateInput,
   requestId?: string,
-): Promise<{ payment: PaymentDto; invoice: InvoiceDto; feesCleared: boolean }> {
+): Promise<{
+  payment: PaymentDto
+  invoice: InvoiceDto
+  feesCleared: boolean
+  allocations: { payment: PaymentDto; invoice: InvoiceDto }[]
+}> {
   requirePermission(session, 'payments.create')
   await assertCanAccessStudent(session, input.studentId)
 
@@ -511,90 +545,142 @@ export async function createPayment(
     throw badRequest('Payment amount must be a positive number')
   }
 
+  const requestedAllocations = input.allocations?.length
+    ? input.allocations.map((allocation) => ({
+        invoiceId: allocation.invoiceId,
+        amount: roundMoney(allocation.amount),
+      }))
+    : [{ invoiceId: input.invoiceId, amount: roundMoney(input.amount) }]
+  const allocatedTotal = roundMoney(
+    requestedAllocations.reduce((sum, allocation) => sum + allocation.amount, 0),
+  )
+  if (
+    requestedAllocations[0]?.invoiceId !== input.invoiceId ||
+    Math.abs(allocatedTotal - roundMoney(input.amount)) > 0.001 ||
+    new Set(requestedAllocations.map((allocation) => allocation.invoiceId)).size !==
+      requestedAllocations.length
+  ) {
+    throw badRequest('Payment allocations must uniquely cover the entered amount')
+  }
+
   const db = getAdminDb()
-  const amount = roundMoney(input.amount)
   const policyRef = db.collection('settings').doc('feePolicy')
 
   const result = await db.runTransaction(async (tx) => {
-    const invoiceRef = db.collection('invoices').doc(input.invoiceId)
-    const invoiceSnap = await tx.get(invoiceRef)
-    if (!invoiceSnap.exists) throw notFound('Invoice not found')
-    const invoice = { id: invoiceSnap.id, ...(invoiceSnap.data() as Omit<Invoice, 'id'>) }
-
-    if (invoice.studentId !== input.studentId) {
+    const invoiceRefs = requestedAllocations.map((allocation) =>
+      db.collection('invoices').doc(allocation.invoiceId),
+    )
+    const invoiceSnaps = await tx.getAll(...invoiceRefs)
+    if (invoiceSnaps.some((snap) => !snap.exists)) throw notFound('Invoice not found')
+    const invoices = invoiceSnaps.map((snap) => ({
+      id: snap.id,
+      ...(snap.data() as Omit<Invoice, 'id'>),
+    }))
+    if (invoices.some((invoice) => invoice.studentId !== input.studentId)) {
       throw badRequest('Invoice does not belong to the given student')
     }
-
-    // All reads before writes (Firestore transaction rule)
-    let receipt = input.receiptNumber?.trim() ?? ''
-    let nextReceiptNumber: number | null = null
-    if (!receipt) {
-      const policySnap = await tx.get(policyRef)
-      const policy = policySnap.data() as Partial<FeePolicy> | undefined
-      const next = Math.max(1, Math.floor(Number(policy?.nextReceiptNumber) || 1001))
-      receipt = `${(policy?.receiptPrefix || 'VHS').toUpperCase()}-${next}`
-      nextReceiptNumber = next + 1
+    if (
+      requestedAllocations.length > 1 &&
+      (invoices.some((invoice) => invoice.plan !== 'MONTHLY') ||
+        invoices.some((invoice) => invoice.termId !== invoices[0]?.termId) ||
+        invoices.some((invoice, index) =>
+          index > 0 && invoice.dueDate < invoices[index - 1]!.dueDate,
+        ))
+    ) {
+      throw badRequest('Split payments must follow monthly invoices in the same term')
     }
 
-    const dupSnap = await tx.get(
-      db.collection('payments').where('receiptNumber', '==', receipt).limit(1),
+    const manualReceipt = input.receiptNumber?.trim() ?? ''
+    const policySnap =
+      !manualReceipt || requestedAllocations.length > 1
+        ? await tx.get(policyRef)
+        : null
+    const policy = policySnap?.data() as Partial<FeePolicy> | undefined
+    const nextReceipt = Math.max(1, Math.floor(Number(policy?.nextReceiptNumber) || 1001))
+    const prefix = (policy?.receiptPrefix || 'VHS').toUpperCase()
+    let generatedCount = 0
+    const receiptNumbers = requestedAllocations.map((_, index) => {
+      if (index === 0 && manualReceipt) return manualReceipt
+      generatedCount += 1
+      return `${prefix}-${nextReceipt + generatedCount - 1}`
+    })
+
+    const duplicateReceipts = await Promise.all(
+      receiptNumbers.map((receipt) =>
+        tx.get(db.collection('payments').where('receiptNumber', '==', receipt).limit(1)),
+      ),
     )
-    if (!dupSnap.empty) {
+    const duplicateIndex = duplicateReceipts.findIndex((snapshot) => !snapshot.empty)
+    if (duplicateIndex >= 0) {
+      const receipt = receiptNumbers[duplicateIndex]!
       throw conflict(
-        nextReceiptNumber
-          ? `Receipt ${receipt} already exists — raise "Next receipt number" in Settings → Fees.`
-          : `Receipt ${receipt} already exists`,
+        manualReceipt && duplicateIndex === 0
+          ? `Receipt ${receipt} already exists`
+          : `Receipt ${receipt} already exists — raise "Next receipt number" in Settings → Fees.`,
       )
     }
 
-    const confirmedSnap = await tx.get(
-      db
-        .collection('payments')
-        .where('invoiceId', '==', input.invoiceId)
-        .where('status', '==', 'CONFIRMED'),
+    const confirmedPayments = await Promise.all(
+      requestedAllocations.map((allocation) =>
+        tx.get(
+          db
+            .collection('payments')
+            .where('invoiceId', '==', allocation.invoiceId)
+            .where('status', '==', 'CONFIRMED'),
+        ),
+      ),
     )
 
-    let alreadyPaid = 0
-    for (const d of confirmedSnap.docs) {
-      alreadyPaid += (d.data() as Payment).amount ?? 0
-    }
-    const balance = roundMoney((invoice.total ?? 0) - alreadyPaid)
-    if (amount > balance + 0.001) {
-      throw badRequest(
-        balance > 0
-          ? `Amount is more than the balance of ${balance.toFixed(2)} on ${invoice.number}.`
-          : `${invoice.number} is already fully paid.`,
+    const allocations = requestedAllocations.map((allocation, index) => {
+      const invoice = invoices[index]!
+      const alreadyPaid = roundMoney(
+        confirmedPayments[index]!.docs.reduce(
+          (sum, doc) => sum + ((doc.data() as Payment).amount ?? 0),
+          0,
+        ),
       )
-    }
-    const paid = roundMoney(alreadyPaid + amount)
+      const balance = invoiceBalance({ ...invoice, paid: alreadyPaid })
+      if (allocation.amount > balance + 0.001) {
+        throw badRequest(
+          balance > 0
+            ? `Payment exceeds the ${balance.toFixed(2)} balance on ${invoice.number}.`
+            : `${invoice.number} is already fully paid.`,
+        )
+      }
+      const paid = roundMoney(alreadyPaid + allocation.amount)
+      const nextInvoice: Invoice = {
+        ...invoice,
+        paid,
+        status: invoiceStatus(
+          invoice.total,
+          paid,
+          invoice.dueDate,
+          invoice.scholarshipAmount,
+        ),
+      }
+      const payment: Payment = {
+        id: newId('pay'),
+        studentId: input.studentId,
+        invoiceId: invoice.id,
+        amount: allocation.amount,
+        method: input.method,
+        status: 'CONFIRMED',
+        paidAt: input.paidAt ?? new Date().toISOString(),
+        receiptNumber: receiptNumbers[index]!,
+        recordedByName: session.profile.name || session.profile.email,
+      }
+      return { payment, invoice: nextInvoice }
+    })
 
-    const paymentId = newId('pay')
-    const paymentRef = db.collection('payments').doc(paymentId)
-    const payment: Payment = {
-      id: paymentId,
-      studentId: input.studentId,
-      invoiceId: input.invoiceId,
-      amount,
-      method: input.method,
-      status: 'CONFIRMED',
-      paidAt: input.paidAt ?? new Date().toISOString(),
-      receiptNumber: receipt,
-      recordedByName: session.profile.name || session.profile.email,
+    allocations.forEach(({ payment, invoice }) => {
+      tx.set(db.collection('payments').doc(payment.id), payment)
+      tx.set(db.collection('invoices').doc(invoice.id), invoice)
+    })
+    if (generatedCount > 0) {
+      tx.set(policyRef, { nextReceiptNumber: nextReceipt + generatedCount }, { merge: true })
     }
 
-    const nextInvoice: Invoice = {
-      ...invoice,
-      paid,
-      status: invoiceStatus(invoice.total, paid, invoice.dueDate),
-    }
-
-    tx.set(paymentRef, payment)
-    tx.set(invoiceRef, nextInvoice)
-    if (nextReceiptNumber) {
-      tx.set(policyRef, { nextReceiptNumber }, { merge: true })
-    }
-
-    return { payment, invoice: nextInvoice }
+    return allocations
   })
 
   await writeAuditLog({
@@ -602,16 +688,20 @@ export async function createPayment(
     actorRole: session.role,
     action: 'payment.create',
     entityType: 'payments',
-    entityId: result.payment.id,
+    entityId: result[0]!.payment.id,
     requestId,
     metadata: {
-      invoiceId: input.invoiceId,
-      amount,
-      receiptNumber: result.payment.receiptNumber,
+      invoiceIds: result.map((allocation) => allocation.invoice.id),
+      amount: allocatedTotal,
+      receiptNumbers: result.map((allocation) => allocation.payment.receiptNumber),
     },
   })
 
-  return { ...result, feesCleared: await isFeeCleared(input.studentId) }
+  return {
+    ...result[0]!,
+    feesCleared: await isFeeCleared(input.studentId),
+    allocations: result,
+  }
 }
 
 export async function getInvoice(session: SessionContext, id: string): Promise<InvoiceDto> {
@@ -642,7 +732,7 @@ export async function isFeeCleared(studentId: string): Promise<boolean> {
   for (const inv of currentInvoices) {
     if (!invoiceBlocksPortal(inv)) continue
     const paid = await computeConfirmedPaid(inv.id)
-    const outstanding = Math.max(0, (inv.total ?? 0) - paid)
+    const outstanding = invoiceBalance({ ...inv, paid })
     if (outstanding > 0) return false
   }
   return true
@@ -689,7 +779,12 @@ export async function reversePayment(
     const nextInvoice: Invoice = {
       ...invoice,
       paid,
-      status: invoiceStatus(invoice.total, paid, invoice.dueDate),
+      status: invoiceStatus(
+        invoice.total,
+        paid,
+        invoice.dueDate,
+        invoice.scholarshipAmount,
+      ),
     }
 
     tx.set(paymentRef, reversed)

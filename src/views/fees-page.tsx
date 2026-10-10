@@ -47,12 +47,14 @@ import {
   FEE_CATEGORIES,
   FEE_LEVELS,
   PAYMENT_PLANS,
+  allocateMonthlyPayment,
   currentBillingTerm,
   currentMonthPeriod,
   feeCategoryFor,
   feeCategoryLabel,
   hasAnyFee,
   invoicesForBillingPeriod,
+  invoiceBalance as calculateInvoiceBalance,
   paymentPlanLabel,
 } from '@/lib/fees'
 import { copyText } from '@/lib/native-app'
@@ -82,7 +84,9 @@ type StudentAccount = {
   invoices: Invoice[]
   billed: number
   paid: number
+  scholarshipAmount: number
   balance: number
+  termBalance: number
   state: AccountState
 }
 
@@ -123,7 +127,7 @@ function formatMoney(amount: number, currency: string) {
 }
 
 function invoiceBalance(invoice: Invoice) {
-  return Math.max(0, Math.round((invoice.total - invoice.paid) * 100) / 100)
+  return calculateInvoiceBalance(invoice)
 }
 
 export function FeesPage() {
@@ -233,7 +237,12 @@ export function FeesPage() {
         )
         const billed = displayedInvoices.reduce((sum, i) => sum + i.total, 0)
         const paid = displayedInvoices.reduce((sum, i) => sum + i.paid, 0)
+        const scholarshipAmount = displayedInvoices.reduce(
+          (sum, i) => sum + (i.scholarshipAmount ?? 0),
+          0,
+        )
         const balance = displayedInvoices.reduce((sum, i) => sum + invoiceBalance(i), 0)
+        const termBalance = list.reduce((sum, i) => sum + invoiceBalance(i), 0)
         const state: AccountState =
           displayedInvoices.length === 0
             ? 'NOT_BILLED'
@@ -252,7 +261,9 @@ export function FeesPage() {
           invoices: list,
           billed,
           paid,
+          scholarshipAmount,
           balance,
+          termBalance,
           state,
         }
       })
@@ -278,6 +289,10 @@ export function FeesPage() {
   const totals = useMemo(() => {
     const invoiceIds = new Set(periodInvoices.map((invoice) => invoice.id))
     const billed = periodInvoices.reduce((s, i) => s + i.total, 0)
+    const scholarshipAmount = periodInvoices.reduce(
+      (sum, invoice) => sum + (invoice.scholarshipAmount ?? 0),
+      0,
+    )
     const collected = payments
       .filter((p) => p.status === 'CONFIRMED' && invoiceIds.has(p.invoiceId))
       .reduce((s, p) => s + p.amount, 0)
@@ -285,8 +300,9 @@ export function FeesPage() {
     const overdue = periodInvoices
       .filter((i) => i.status === 'OVERDUE')
       .reduce((s, i) => s + invoiceBalance(i), 0)
-    return { billed, collected, outstanding, overdue }
-  }, [periodInvoices, payments])
+    const termOutstanding = termInvoices.reduce((sum, invoice) => sum + invoiceBalance(invoice), 0)
+    return { billed, scholarshipAmount, collected, outstanding, overdue, termOutstanding }
+  }, [periodInvoices, payments, termInvoices])
 
   const categoryCounts = useMemo(() => {
     const counts = Object.fromEntries(FEE_CATEGORIES.map((c) => [c.value, 0])) as Record<
@@ -395,8 +411,14 @@ export function FeesPage() {
         </Alert>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-6">
         <StatCard label="Billed for period" value={money(totals.billed)} icon={Receipt} />
+        <StatCard
+          label="Scholarship covered"
+          value={money(totals.scholarshipAmount)}
+          icon={ReceiptText}
+          tone="success"
+        />
         <StatCard
           label="Collected for period"
           value={money(totals.collected)}
@@ -406,6 +428,12 @@ export function FeesPage() {
         <StatCard
           label="Period balance"
           value={money(totals.outstanding)}
+          icon={Wallet}
+          tone="warning"
+        />
+        <StatCard
+          label="Selected term remaining"
+          value={money(totals.termOutstanding)}
           icon={Wallet}
           tone="warning"
         />
@@ -568,7 +596,9 @@ export function FeesPage() {
                     <DataTableHeaderCell>Type</DataTableHeaderCell>
                     <DataTableHeaderCell className="text-right">Period billed</DataTableHeaderCell>
                     <DataTableHeaderCell className="text-right">Period paid</DataTableHeaderCell>
+                    <DataTableHeaderCell className="text-right">Scholarship</DataTableHeaderCell>
                     <DataTableHeaderCell className="text-right">Period balance</DataTableHeaderCell>
+                    <DataTableHeaderCell className="text-right">Term remaining</DataTableHeaderCell>
                     <DataTableHeaderCell>Status</DataTableHeaderCell>
                     <DataTableHeaderCell className="text-right">Actions</DataTableHeaderCell>
                   </tr>
@@ -604,8 +634,14 @@ export function FeesPage() {
                       <DataTableCell className="text-right tabular-nums">
                         {money(a.paid)}
                       </DataTableCell>
+                      <DataTableCell className="text-right tabular-nums">
+                        {money(a.scholarshipAmount)}
+                      </DataTableCell>
                       <DataTableCell className="text-right font-semibold tabular-nums">
                         {money(a.balance)}
+                      </DataTableCell>
+                      <DataTableCell className="text-right tabular-nums">
+                        {money(a.termBalance)}
                       </DataTableCell>
                       <DataTableCell>
                         <Badge variant={ACCOUNT_BADGE[a.state].variant}>
@@ -785,7 +821,7 @@ function RecordPaymentDialog({
             ? candidate.plan === 'MONTHLY'
             : candidate.plan !== 'MONTHLY' &&
               (candidate.termId ?? UNASSIGNED_TERM_ID) === feePeriod),
-      ),
+      ).sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
     [allInvoices, feePeriod, studentId],
   )
   const unpaid = useMemo(
@@ -794,10 +830,24 @@ function RecordPaymentDialog({
   )
   const invoice = unpaid.find((i) => i.id === invoiceId)
   const enteredAmount = Number(amount)
+  const plannedAllocations =
+    invoice && Number.isFinite(enteredAmount) && enteredAmount > 0
+      ? feePeriod === MONTHLY_PAYMENT
+        ? allocateMonthlyPayment(unpaid, invoice.id, enteredAmount)
+        : enteredAmount <= invoiceBalance(invoice)
+          ? [{ invoiceId: invoice.id, amount: Math.round(enteredAmount * 100) / 100 }]
+          : []
+      : []
+  const allocatedAmount = plannedAllocations.reduce((sum, allocation) => sum + allocation.amount, 0)
+  const allocationPreview = plannedAllocations.map((allocation) => ({
+    ...allocation,
+    invoice: periodInvoices.find((candidate) => candidate.id === allocation.invoiceId)!,
+  }))
   const balanceAfterPayment = invoice
     ? Math.max(
         0,
-        invoiceBalance(invoice) - (Number.isFinite(enteredAmount) ? enteredAmount : 0),
+        invoiceBalance(invoice) -
+          (plannedAllocations.find((allocation) => allocation.invoiceId === invoice.id)?.amount ?? 0),
       )
     : 0
 
@@ -821,9 +871,10 @@ function RecordPaymentDialog({
           : candidate.plan !== 'MONTHLY' &&
             (candidate.termId ?? UNASSIGNED_TERM_ID) === nextPeriod),
     )
+    const sorted = candidates.sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     const first =
-      candidates.find((i) => i.period === currentMonthPeriod() && invoiceBalance(i) > 0) ??
-      candidates.find((i) => invoiceBalance(i) > 0)
+      sorted.find((i) => i.period === currentMonthPeriod() && invoiceBalance(i) > 0) ??
+      sorted.find((i) => invoiceBalance(i) > 0)
     setInvoiceId(first?.id ?? '')
     setAmount(first ? String(invoiceBalance(first)) : '')
   }
@@ -838,9 +889,10 @@ function RecordPaymentDialog({
           : candidate.plan !== 'MONTHLY' &&
             (candidate.termId ?? UNASSIGNED_TERM_ID) === value),
     )
+    const sorted = candidates.sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     const first =
-      candidates.find((i) => i.period === currentMonthPeriod() && invoiceBalance(i) > 0) ??
-      candidates.find((i) => invoiceBalance(i) > 0)
+      sorted.find((i) => i.period === currentMonthPeriod() && invoiceBalance(i) > 0) ??
+      sorted.find((i) => invoiceBalance(i) > 0)
     setInvoiceId(first?.id ?? '')
     setAmount(first ? String(invoiceBalance(first)) : '')
   }
@@ -912,10 +964,15 @@ function RecordPaymentDialog({
       notify.error('Enter the amount paid')
       return
     }
-    if (value > invoiceBalance(invoice) + 0.001) {
+    if (
+      plannedAllocations.length === 0 ||
+      Math.abs(allocatedAmount - value) > 0.001
+    ) {
       notify.error(
-        'Amount is more than the balance',
-        `${invoice.number} has ${formatMoney(invoiceBalance(invoice), currency)} left to pay.`,
+        'Amount exceeds the available balance',
+        feePeriod === MONTHLY_PAYMENT
+          ? 'The amount is more than the remaining monthly invoices in this term. Use “Bill current term” first if future invoices have not been prepared.'
+          : `${invoice.number} has ${formatMoney(invoiceBalance(invoice), currency)} left to pay.`,
       )
       return
     }
@@ -927,13 +984,17 @@ function RecordPaymentDialog({
             studentId: account.student.id,
             invoiceId: invoice.id,
             amount: value,
+            ...(plannedAllocations.length > 1 ? { allocations: plannedAllocations } : {}),
             method,
             receiptNumber: receiptNumber.trim() || undefined,
             paidAt: paidAt || undefined,
           }),
         {
           loading: 'Recording payment…',
-          success: (r) => `Payment recorded · receipt ${r.payment.receiptNumber}`,
+          success: (r) =>
+            r.allocations && r.allocations.length > 1
+              ? `Payment allocated across ${r.allocations.length} months · receipts ${r.allocations.map(({ payment: item }) => item.receiptNumber).join(', ')}`
+              : `Payment recorded · receipt ${r.payment.receiptNumber}`,
           error: 'Could not record payment',
         },
       )
@@ -951,9 +1012,11 @@ function RecordPaymentDialog({
           <DialogTitle>Record payment</DialogTitle>
           <DialogDescription>
             Choose Term 1, Term 2, Term 3, or Monthly payment. Termly payments go to that term's
-            invoice; monthly payments go to the selected month. Partial payments update only the
-            chosen invoice. The receipt number is assigned automatically unless you type one from
-            a manual receipt book.
+            invoice. Monthly payments start at the selected month and apply forward through that
+            term's remaining monthly invoices. Future months remain outside the current balance
+            until they are due. A split payment receives a separate receipt number for each month.
+            Close this dialog and use “Bill current term” first to prepare future invoices for
+            advance payments.
           </DialogDescription>
         </DialogHeader>
 
@@ -965,6 +1028,9 @@ function RecordPaymentDialog({
                 {account.student.studentNumber} ·{' '}
                 {account.plan === 'MONTHLY' ? `${currentMonthPeriod()} balance` : 'Term balance'}{' '}
                 {formatMoney(account.balance, currency)}
+                {account.plan === 'MONTHLY'
+                  ? ` · ${formatMoney(account.termBalance, currency)} remaining this term`
+                  : ''}
               </p>
             </div>
           ) : (
@@ -1046,6 +1112,23 @@ function RecordPaymentDialog({
                     Due {formatDate(invoice.dueDate)}
                   </p>
                 ) : null}
+                {feePeriod === MONTHLY_PAYMENT && allocationPreview.length > 0 ? (
+                  <div className="rounded-md bg-muted/50 px-3 py-2 text-xs">
+                    <p className="mb-1 font-medium">Payment allocation preview</p>
+                    {allocationPreview.map(({ invoice: target, amount: allocated }) => (
+                      <p key={target.id} className="flex justify-between gap-2">
+                        <span>{target.period ?? target.number}</span>
+                        <span>{formatMoney(allocated, currency)}</span>
+                      </p>
+                    ))}
+                    {allocatedAmount + 0.001 < (Number.isFinite(enteredAmount) ? enteredAmount : 0) ? (
+                      <p className="mt-1 text-warning">
+                        {formatMoney(enteredAmount - allocatedAmount, currency)} cannot be allocated
+                        within this term.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </Field>
               {account.plan === 'MONTHLY' && selectedTermIsCurrent ? (
                 <Button
@@ -1071,14 +1154,19 @@ function RecordPaymentDialog({
                 type="number"
                 inputMode="decimal"
                 min={0}
-                max={invoice ? invoiceBalance(invoice) : undefined}
+                max={
+                  invoice && feePeriod !== MONTHLY_PAYMENT
+                    ? invoiceBalance(invoice)
+                    : undefined
+                }
                 step="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
               {invoice ? (
                 <p className="text-xs text-muted-foreground">
-                  Balance after this payment: {formatMoney(balanceAfterPayment, currency)}
+                  Selected month balance after this payment:{' '}
+                  {formatMoney(balanceAfterPayment, currency)}
                 </p>
               ) : null}
             </Field>

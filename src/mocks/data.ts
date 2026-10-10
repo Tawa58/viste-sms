@@ -682,7 +682,10 @@ export const dashboardStats: DashboardStats = {
   totalStudents: students.filter((s) => s.status === 'ACTIVE').length,
   totalTeachers: staff.filter((s) => s.status === 'ACTIVE').length,
   todayAttendancePct: 0,
-  outstandingFees: invoices.reduce((sum, i) => sum + (i.total - i.paid), 0),
+  outstandingFees: invoices.reduce(
+    (sum, i) => sum + Math.max(0, i.total - i.paid - (i.scholarshipAmount ?? 0)),
+    0,
+  ),
   feesCollected: payments
     .filter((p) => p.status === 'CONFIRMED')
     .reduce((sum, p) => sum + p.amount, 0),

@@ -100,6 +100,7 @@ export function StudentDetailPage() {
   })
   const [scholarshipForm, setScholarshipForm] = useState({
     grantor: '',
+    termId: '',
     startDate: new Date().toISOString().slice(0, 10),
     endDate: '',
     feeCoveragePercent: '100',
@@ -300,8 +301,13 @@ export function StudentDetailPage() {
 
   async function saveScholarship() {
     if (!student || !studentService.createScholarship) return
-    if (!scholarshipForm.grantor.trim() || !scholarshipForm.startDate) {
-      notify.error('Grantor and start date are required')
+    if (!scholarshipForm.grantor.trim() || (!scholarshipForm.termId && !scholarshipForm.startDate)) {
+      notify.error('Grantor and coverage period are required')
+      return
+    }
+    const selectedTerm = terms.find((term) => term.id === scholarshipForm.termId)
+    if (scholarshipForm.termId && !selectedTerm) {
+      notify.error('Select a valid school term')
       return
     }
     setSaving(true)
@@ -310,8 +316,9 @@ export function StudentDetailPage() {
         () =>
           studentService.createScholarship!(student.id, {
             grantor: scholarshipForm.grantor.trim(),
-            startDate: scholarshipForm.startDate,
-            endDate: scholarshipForm.endDate || undefined,
+            termId: selectedTerm?.id,
+            startDate: selectedTerm?.startDate ?? scholarshipForm.startDate,
+            endDate: selectedTerm?.endDate ?? (scholarshipForm.endDate || undefined),
             feeCoveragePercent: Number(scholarshipForm.feeCoveragePercent),
             benefits: scholarshipForm.benefits,
             otherBenefits: scholarshipForm.otherBenefits.trim() || undefined,
@@ -461,6 +468,7 @@ export function StudentDetailPage() {
                   onClick={() => {
                     setScholarshipForm({
                       grantor: '',
+                      termId: currentBillingTerm(terms)?.id ?? '',
                       startDate: new Date().toISOString().slice(0, 10),
                       endDate: '',
                       feeCoveragePercent: '100',
@@ -710,6 +718,9 @@ export function StudentDetailPage() {
                         <p className="font-medium">{grant.grantor}</p>
                         <p className="text-muted-foreground">
                           Fees covered: {grant.feeCoveragePercent}%
+                          {grant.termId
+                            ? ` · ${terms.find((term) => term.id === grant.termId)?.name ?? 'Selected term'}`
+                            : ''}
                           {grant.benefits.length
                             ? ` · ${grant.benefits.map((benefit) => benefitLabels[benefit]).join(', ')}`
                             : ''}
@@ -799,6 +810,11 @@ export function StudentDetailPage() {
                         .join(' · ')}
                       {inv.termName || inv.category ? ' · ' : ''}Due {formatDate(inv.dueDate)}
                     </p>
+                    {inv.scholarshipAmount ? (
+                      <p className="text-xs text-success">
+                        Scholarship covered: {formatCurrency(inv.scholarshipAmount)}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="text-right">
                     <p>
@@ -1018,10 +1034,26 @@ export function StudentDetailPage() {
           <DialogHeader>
             <DialogTitle>Record scholarship</DialogTitle>
             <DialogDescription>
-              Set the grantor, effective dates, fee coverage, and any additional support.
+              Choose the term the scholarship covers, then set its fee contribution and other support.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
+            <Field>
+              <Label>Term covered</Label>
+              <Select
+                value={scholarshipForm.termId}
+                onChange={(e) =>
+                  setScholarshipForm((f) => ({ ...f, termId: e.target.value }))
+                }
+              >
+                <option value="">Date-range scholarship (all applicable terms)</option>
+                {terms.map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.name} · {formatDate(term.startDate)} – {formatDate(term.endDate)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field>
               <Label>Grantor / sponsor</Label>
               <Input
@@ -1030,24 +1062,30 @@ export function StudentDetailPage() {
                 placeholder="Organization or person"
               />
             </Field>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field>
-                <Label>Start date</Label>
-                <Input
-                  type="date"
-                  value={scholarshipForm.startDate}
-                  onChange={(e) => setScholarshipForm((f) => ({ ...f, startDate: e.target.value }))}
-                />
-              </Field>
-              <Field>
-                <Label>End date (optional)</Label>
-                <Input
-                  type="date"
-                  value={scholarshipForm.endDate}
-                  onChange={(e) => setScholarshipForm((f) => ({ ...f, endDate: e.target.value }))}
-                />
-              </Field>
-            </div>
+            {!scholarshipForm.termId ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <Label>Start date</Label>
+                  <Input
+                    type="date"
+                    value={scholarshipForm.startDate}
+                    onChange={(e) =>
+                      setScholarshipForm((f) => ({ ...f, startDate: e.target.value }))
+                    }
+                  />
+                </Field>
+                <Field>
+                  <Label>End date (optional)</Label>
+                  <Input
+                    type="date"
+                    value={scholarshipForm.endDate}
+                    onChange={(e) =>
+                      setScholarshipForm((f) => ({ ...f, endDate: e.target.value }))
+                    }
+                  />
+                </Field>
+              </div>
+            ) : null}
             <Field>
               <Label>School-fee coverage (%)</Label>
               <Input

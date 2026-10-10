@@ -114,15 +114,56 @@ export function invoicesForBillingPeriod<T extends Pick<
 export function balanceForBillingPeriod(
   invoices: Pick<
     import('@/types').Invoice,
-    'termId' | 'plan' | 'period' | 'total' | 'paid'
+    'termId' | 'plan' | 'period' | 'total' | 'paid' | 'scholarshipAmount'
   >[],
   termId: string | undefined,
   month: string | null = currentMonthPeriod(),
 ) {
   return invoicesForBillingPeriod(invoices, termId, month).reduce(
-    (balance, invoice) => balance + Math.max(0, invoice.total - invoice.paid),
+    (balance, invoice) => balance + invoiceBalance(invoice),
     0,
   )
+}
+
+export function invoiceBalance(
+  invoice: Pick<import('@/types').Invoice, 'total' | 'paid' | 'scholarshipAmount'>,
+) {
+  return Math.max(
+    0,
+    Math.round((invoice.total - invoice.paid - (invoice.scholarshipAmount ?? 0)) * 100) / 100,
+  )
+}
+
+export function allocateMonthlyPayment(
+  invoices: Pick<
+    import('@/types').Invoice,
+    'id' | 'termId' | 'plan' | 'dueDate' | 'total' | 'paid' | 'scholarshipAmount'
+  >[],
+  startInvoiceId: string,
+  amount: number,
+) {
+  const ordered = invoices
+    .filter((invoice) => invoice.plan === 'MONTHLY')
+    .slice()
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.id.localeCompare(b.id))
+  const startIndex = ordered.findIndex((invoice) => invoice.id === startInvoiceId)
+  if (startIndex < 0 || !(amount > 0)) return []
+
+  const termId = ordered[startIndex]!.termId
+  let remaining = Math.round(amount * 100) / 100
+  const allocations: { invoiceId: string; amount: number }[] = []
+  for (const invoice of ordered.slice(startIndex)) {
+    if (invoice.termId !== termId || remaining <= 0) break
+    const balance = invoiceBalance(invoice)
+    const allocated = Math.min(balance, remaining)
+    if (allocated <= 0) continue
+    allocations.push({
+      invoiceId: invoice.id,
+      amount: Math.round(allocated * 100) / 100,
+    })
+    remaining = Math.round((remaining - allocated) * 100) / 100
+  }
+  return allocations
 }
 
 export function feeCategoryLabel(category: FeeCategory | LegacyFeeCategory | undefined | null) {
@@ -201,7 +242,11 @@ export function scholarshipAdjustedFeeAmount(
   amount: number,
   periodStart: string,
   periodEnd: string,
-  scholarships: Pick<StudentScholarship, 'startDate' | 'endDate' | 'feeCoveragePercent'>[],
+  scholarships: Pick<
+    StudentScholarship,
+    'startDate' | 'endDate' | 'feeCoveragePercent' | 'termId'
+  >[],
+  termId?: string,
 ) {
   if (amount <= 0 || scholarships.length === 0) return amount
   const start = new Date(`${periodStart.slice(0, 10)}T00:00:00Z`)
@@ -212,7 +257,13 @@ export function scholarshipAdjustedFeeAmount(
   for (let day = start.getTime(); day <= end.getTime(); day += 86_400_000) {
     const date = new Date(day).toISOString().slice(0, 10)
     const coverage = scholarships
-      .filter((grant) => grant.startDate <= date && (!grant.endDate || grant.endDate >= date))
+      .filter((grant) =>
+        grant.termId
+          ? grant.termId === termId &&
+            grant.startDate <= date &&
+            (!grant.endDate || grant.endDate >= date)
+          : grant.startDate <= date && (!grant.endDate || grant.endDate >= date),
+      )
       .reduce((total, grant) => total + grant.feeCoveragePercent, 0)
     coveredPercentDays += Math.min(100, coverage)
   }

@@ -250,7 +250,7 @@ export async function getFinanceSummary(
       .where('paidAt', '<', `${year + 1}-01-01`)
       .select('amount', 'paidAt', 'status')
       .get(),
-    db.collection('invoices').select('total', 'paid').get(),
+    db.collection('invoices').select('total', 'paid', 'scholarshipAmount').get(),
     inRange<Revenue>(HR.revenues, from, to),
     inRange<Expense>(HR.expenses, from, to),
   ])
@@ -259,8 +259,20 @@ export async function getFinanceSummary(
     return { amount: Number(p.amount) || 0, paidAt: String(p.paidAt ?? ''), status: String(p.status ?? '') }
   })
   const outstandingFees = invoicesSnap.docs.reduce((sum, d) => {
-    const inv = d.data() as { total?: number; paid?: number }
-    return sum + Math.max(0, (Number(inv.total) || 0) - (Number(inv.paid) || 0))
+    const inv = d.data() as {
+      total?: number
+      paid?: number
+      scholarshipAmount?: number
+    }
+    return (
+      sum +
+      Math.max(
+        0,
+        (Number(inv.total) || 0) -
+          (Number(inv.paid) || 0) -
+          (Number(inv.scholarshipAmount) || 0),
+      )
+    )
   }, 0)
   return buildFinanceSummary({ year, feePayments, revenues, expenses, outstandingFees })
 }

@@ -39,6 +39,7 @@ import {
 } from '@/lib/reports-export'
 import { catalogService, classService, studentService } from '@/services/api'
 import { formatCurrency, formatDate, fullName } from '@/lib/utils'
+import { invoiceBalance } from '@/lib/fees'
 import type {
   AcademicYear,
   Assessment,
@@ -273,7 +274,7 @@ export function ReportsPage() {
         })
         .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
         .map((inv, i) => {
-          const outstanding = Math.max(0, inv.total - inv.paid)
+          const outstanding = invoiceBalance(inv)
           return [
             String(i + 1),
             inv.number,
@@ -281,13 +282,14 @@ export function ReportsPage() {
             formatDate(inv.dueDate),
             formatCurrency(inv.total),
             formatCurrency(inv.paid),
+            formatCurrency(inv.scholarshipAmount ?? 0),
             formatCurrency(outstanding),
             inv.status,
           ]
         })
       const totalOut = invoices
         .filter((inv) => rows.some((r) => r[1] === inv.number))
-        .reduce((sum, inv) => sum + Math.max(0, inv.total - inv.paid), 0)
+        .reduce((sum, inv) => sum + invoiceBalance(inv), 0)
       const paidPeriod = payments
         .filter((p) => p.paidAt.slice(0, 10) >= fromDate && p.paidAt.slice(0, 10) <= toDate)
         .reduce(
@@ -296,7 +298,17 @@ export function ReportsPage() {
         )
       return {
         title: `${title} (${fromDate} → ${toDate})`,
-        headers: ['#', 'Invoice', 'Student', 'Due', 'Total', 'Paid', 'Outstanding', 'Status'],
+        headers: [
+          '#',
+          'Invoice',
+          'Student',
+          'Due',
+          'Total',
+          'Paid',
+          'Scholarship',
+          'Outstanding',
+          'Status',
+        ],
         rows,
         summary: `${rows.length} invoice(s) · Outstanding ${formatCurrency(totalOut)} · Payments in range ${formatCurrency(paidPeriod)}`,
       }

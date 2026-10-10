@@ -215,7 +215,9 @@ export function StudentPortalAccessCard({
             <div>
               <dt className="text-muted-foreground">Fees</dt>
               <dd className={access.feeCleared ? 'text-success' : 'text-warning'}>
-                {access.feeCleared ? 'Cleared' : access.feeMessage ?? 'Not cleared'}
+                {access.feeCleared
+                  ? access.feeMessage ?? 'Cleared'
+                  : access.feeMessage ?? 'Not cleared'}
               </dd>
             </div>
           </dl>

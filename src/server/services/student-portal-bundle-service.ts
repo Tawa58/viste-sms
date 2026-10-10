@@ -8,7 +8,7 @@ import { forbidden } from '@/server/errors'
 import { queryCollection } from '@/server/repositories/firestore-repo'
 import { listInvoices, listPayments, resolveBillingTerm } from '@/server/services/finance-service'
 import { getGradingScaleForEducationLevel, gradeFromScore } from '@/server/services/grading-service'
-import { currentMonthPeriod, invoicesForBillingPeriod } from '@/lib/fees'
+import { currentMonthPeriod, invoiceBalance, invoicesForBillingPeriod } from '@/lib/fees'
 import { getResultsPortal } from '@/server/services/results-service'
 import { getFeePolicy, getSchoolProfile } from '@/server/services/school-settings-service'
 import type {
@@ -128,9 +128,13 @@ async function loadFees(
   const payableInvoices = invoicesForBillingPeriod(invoices, term?.id, currentMonthPeriod())
   const billed = payableInvoices.reduce((sum, i) => sum + (i.total || 0), 0)
   const paid = payableInvoices.reduce((sum, i) => sum + (i.paid || 0), 0)
-  const balance = Math.max(0, billed - paid)
+  const scholarshipAmount = payableInvoices.reduce(
+    (sum, i) => sum + (i.scholarshipAmount || 0),
+    0,
+  )
+  const balance = payableInvoices.reduce((sum, i) => sum + invoiceBalance(i), 0)
   const nextDueDate = payableInvoices
-    .filter((i) => i.total - i.paid > 0 && i.dueDate)
+    .filter((i) => invoiceBalance(i) > 0 && i.dueDate)
     .map((i) => i.dueDate)
     .sort()[0]
   return {
@@ -139,6 +143,7 @@ async function loadFees(
     payments: [...payments].sort((a, b) => (b.paidAt ?? '').localeCompare(a.paidAt ?? '')),
     billed,
     paid,
+    scholarshipAmount,
     balance,
     cleared: balance <= 0,
     nextDueDate,

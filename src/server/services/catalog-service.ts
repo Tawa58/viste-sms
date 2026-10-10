@@ -4,6 +4,7 @@ import type { SessionContext } from '@/server/auth/session'
 import { requirePermission } from '@/server/authorization/permissions'
 import { listAccessibleStudents } from '@/server/authorization/isolation'
 import { getAdminDb } from '@/lib/firebase/admin'
+import { invoiceBalance } from '@/lib/fees'
 import { queryCollection } from '@/server/repositories/firestore-repo'
 import type {
   AcademicYear,
@@ -143,7 +144,7 @@ export async function getDashboardBundle(session: SessionContext): Promise<Dashb
     totalStudents: studentHeadcount,
     totalTeachers: teacherCount,
     todayAttendancePct: todayPct,
-    outstandingFees: scopedInvoices.reduce((sum, i) => sum + Math.max(0, i.total - i.paid), 0),
+    outstandingFees: scopedInvoices.reduce((sum, invoice) => sum + invoiceBalance(invoice), 0),
     feesCollected: scopedPayments
       .filter((p) => p.status === 'CONFIRMED')
       .reduce((sum, p) => sum + p.amount, 0),

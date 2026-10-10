@@ -26,6 +26,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { ResolvedAvatar } from '@/components/shared/resolved-avatar'
 import { SchoolLogo } from '@/components/shared/school-logo'
 import { StatCard } from '@/components/shared/stat-card'
+import { invoiceBalance } from '@/lib/fees'
 import {
   ATTENDANCE_LABEL,
   AttendanceBadge,
@@ -719,9 +720,15 @@ export function MyFeesPage() {
     <PortalPage title="Fees" description="Your fee statement, invoices and payments.">
       {({ fees }) => (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <StatCard label="Current period billed" value={money(fees.billed, fees.currency)} icon={Receipt} />
             <StatCard label="Current period paid" value={money(fees.paid, fees.currency)} icon={Wallet} tone="success" />
+            <StatCard
+              label="Scholarship covered"
+              value={money(fees.scholarshipAmount ?? 0, fees.currency)}
+              icon={Award}
+              tone="success"
+            />
             <StatCard
               label="Current period balance"
               value={money(fees.balance, fees.currency)}
@@ -733,8 +740,10 @@ export function MyFeesPage() {
 
           {fees.invoices.length > 0 ? (
             fees.cleared ? (
-              <Alert title="All fees cleared" tone="success">
-                Thank you — your account is fully paid up.
+              <Alert title="Current fees cleared" tone="success">
+                {fees.scholarshipAmount
+                  ? `Scholarship coverage of ${money(fees.scholarshipAmount, fees.currency)} has been applied.`
+                  : 'Thank you — your account is fully paid up.'}
               </Alert>
             ) : (
               <Alert title="Balance outstanding" tone="warning">
@@ -753,7 +762,7 @@ export function MyFeesPage() {
               {fees.invoices.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No fees have been billed to your account.</p>
               ) : (
-                <TableShell head={['Invoice', 'Term', 'Due', 'Amount', 'Paid', 'Balance', 'Status']}>
+                <TableShell head={['Invoice', 'Term', 'Due', 'Amount', 'Paid', 'Scholarship', 'Balance', 'Status']}>
                   {fees.invoices.map((inv) => (
                     <tr key={inv.id}>
                       <td className="px-4 py-2.5 font-medium">{inv.number}</td>
@@ -764,7 +773,10 @@ export function MyFeesPage() {
                       <td className="px-4 py-2.5 tabular-nums">{money(inv.total, fees.currency)}</td>
                       <td className="px-4 py-2.5 tabular-nums">{money(inv.paid, fees.currency)}</td>
                       <td className="px-4 py-2.5 tabular-nums">
-                        {money(Math.max(0, inv.total - inv.paid), fees.currency)}
+                        {money(inv.scholarshipAmount ?? 0, fees.currency)}
+                      </td>
+                      <td className="px-4 py-2.5 tabular-nums">
+                        {money(invoiceBalance(inv), fees.currency)}
                       </td>
                       <td className="px-4 py-2.5">{invoiceBadge(inv)}</td>
                     </tr>

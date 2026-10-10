@@ -33,6 +33,7 @@ import type {
   Student,
   StudentExemption,
   StudentScholarship,
+  Term,
 } from '@/types'
 
 export type StudentDto = Student
@@ -527,13 +528,16 @@ export async function createStudentScholarship(
 ): Promise<StudentScholarship> {
   requirePermission(session, 'students.exempt')
   const student = await assertCanAccessStudent(session, studentId)
+  const term = input.termId ? await getDoc<Term>('terms', input.termId) : undefined
+  if (input.termId && !term) throw badRequest('The selected scholarship term does not exist')
   const id = newId('sch')
   const row: StudentScholarship = {
     id,
     studentId,
+    termId: input.termId || undefined,
     grantor: input.grantor.trim(),
-    startDate: input.startDate,
-    endDate: input.endDate,
+    startDate: term?.startDate ?? input.startDate,
+    endDate: term?.endDate ?? input.endDate,
     feeCoveragePercent: input.feeCoveragePercent,
     benefits: input.benefits,
     otherBenefits: emptyToUndefined(input.otherBenefits),
@@ -554,12 +558,13 @@ export async function createStudentScholarship(
     metadata: {
       studentId,
       grantor: row.grantor,
+      termId: row.termId,
       feeCoveragePercent: row.feeCoveragePercent,
       startDate: row.startDate,
       endDate: row.endDate,
     },
   })
-  await syncStudentTermInvoice(student)
+  await syncStudentTermInvoice(student, row.termId)
   return row
 }
 
@@ -594,7 +599,7 @@ export async function deactivateStudentScholarship(
     entityId: scholarshipId,
     requestId,
   })
-  await syncStudentTermInvoice(student)
+  await syncStudentTermInvoice(student, current.termId)
   return next
 }
 

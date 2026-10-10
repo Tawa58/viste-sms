@@ -451,6 +451,8 @@ export type ScholarshipBenefit =
 export interface StudentScholarship {
   id: string
   studentId: string
+  /** When set, fee coverage is restricted to this school term. */
+  termId?: string
   grantor: string
   startDate: string
   endDate?: string
@@ -622,6 +624,8 @@ export interface Invoice {
   dueDate: string
   total: number
   paid: number
+  /** Fee amount covered by scholarships, separate from cash payments. */
+  scholarshipAmount?: number
   status: 'OPEN' | 'PARTIAL' | 'PAID' | 'OVERDUE'
   /** Set on term fee invoices. */
   termId?: string
@@ -647,8 +651,10 @@ export interface Payment {
 
 export interface RecordPaymentInput {
   studentId: string
+  /** First invoice being settled; allocations may distribute the amount forward. */
   invoiceId: string
   amount: number
+  allocations?: { invoiceId: string; amount: number }[]
   method: string
   /** Blank → next receipt number from Settings → Fees. */
   receiptNumber?: string
@@ -658,6 +664,8 @@ export interface RecordPaymentInput {
 export interface RecordPaymentResult {
   payment: Payment
   invoice: Invoice
+  /** Per-invoice records when one receipt amount is allocated across invoices. */
+  allocations?: { payment: Payment; invoice: Invoice }[]
   /** True when the student has no outstanding balance left (portal passcode can be issued). */
   feesCleared: boolean
 }
@@ -1203,6 +1211,7 @@ export interface StudentPortalFees {
   payments: Payment[]
   billed: number
   paid: number
+  scholarshipAmount?: number
   balance: number
   cleared: boolean
   /** Earliest due date among invoices with a balance. */

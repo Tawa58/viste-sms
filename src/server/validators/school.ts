@@ -145,6 +145,7 @@ export const exemptionCreateSchema = z.object({
 export const scholarshipCreateSchema = z
   .object({
     grantor: z.string().trim().min(2).max(160),
+    termId: idSchema.optional().or(z.literal('')),
     startDate: isoDateSchema,
     endDate: isoDateSchema.optional(),
     feeCoveragePercent: z.number().min(0).max(100).default(100),
@@ -299,6 +300,16 @@ export const paymentCreateSchema = z.object({
   studentId: idSchema,
   invoiceId: idSchema,
   amount: z.number().positive().max(1_000_000),
+  allocations: z
+    .array(
+      z.object({
+        invoiceId: idSchema,
+        amount: z.number().positive().max(1_000_000),
+      }),
+    )
+    .min(1)
+    .max(12)
+    .optional(),
   method: z.string().min(1).max(80),
   /** Blank → next number from the fee policy receipt counter. */
   receiptNumber: z.string().trim().max(80).optional(),

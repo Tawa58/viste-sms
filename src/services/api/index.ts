@@ -92,6 +92,7 @@ import {
   DEFAULT_MONTHS_PER_TERM,
   feeAmountFor,
   feeCategoryFor,
+  invoiceBalance,
   monthlyInstalments,
   monthlyInvoiceId,
   normalizeFeeSchedule,
@@ -422,6 +423,23 @@ class MockStudentService implements StudentService {
       createdAt: new Date().toISOString(),
     }
     mockScholarships.unshift(row)
+    if (row.termId) {
+      for (const invoice of invoices) {
+        if (invoice.studentId !== studentId || invoice.termId !== row.termId) continue
+        const coverage = mockScholarships
+          .filter(
+            (grant) =>
+              grant.active &&
+              grant.studentId === studentId &&
+              grant.termId === row.termId,
+          )
+          .reduce((sum, grant) => sum + grant.feeCoveragePercent, 0)
+        invoice.scholarshipAmount =
+          Math.round(((invoice.total * Math.min(100, coverage)) / 100) * 100) / 100
+        invoice.status =
+          invoice.paid + invoice.scholarshipAmount >= invoice.total ? 'PAID' : 'PARTIAL'
+      }
+    }
     return mockRequest(row)
   }
   async deactivateScholarship(studentId: string, scholarshipId: string) {
@@ -430,6 +448,27 @@ class MockStudentService implements StudentService {
     )
     if (!row) throw new Error('Scholarship not found')
     row.active = false
+    if (row.termId) {
+      for (const invoice of invoices) {
+        if (invoice.studentId !== studentId || invoice.termId !== row.termId) continue
+        const coverage = mockScholarships
+          .filter(
+            (grant) =>
+              grant.active &&
+              grant.studentId === studentId &&
+              grant.termId === row.termId,
+          )
+          .reduce((sum, grant) => sum + grant.feeCoveragePercent, 0)
+        invoice.scholarshipAmount =
+          Math.round(((invoice.total * Math.min(100, coverage)) / 100) * 100) / 100
+        invoice.status =
+          invoice.paid + invoice.scholarshipAmount >= invoice.total
+            ? 'PAID'
+            : invoice.paid > 0
+              ? 'PARTIAL'
+              : 'OPEN'
+      }
+    }
     return mockRequest(row)
   }
 }
@@ -1053,15 +1092,89 @@ const mockCatalogService = {
   getFeeStructures: (): Promise<FeeStructure[]> => mockRequest(feeStructures),
   getInvoices: (): Promise<Invoice[]> => mockRequest(invoices),
   getPayments: (): Promise<Payment[]> => mockRequest(payments),
-  billTerm: async (_termId?: string) =>
-    mockRequest<import('@/types').TermBillingResult>({
-      termId: 'term-mock',
-      termName: 'Current term',
-      created: 0,
-      updated: 0,
-      unchanged: invoices.length,
+  billTerm: async (termId?: string) => {
+    const today = new Date().toISOString().slice(0, 10)
+    const term =
+      terms.find((row) => row.id === termId) ??
+      terms.find((row) => row.startDate <= today && today <= row.endDate) ??
+      terms.find((row) => row.startDate > today)
+    if (!term) throw new Error('No current or upcoming term is configured')
+    let created = 0
+    let updated = 0
+    let unchanged = 0
+    for (const student of students.filter(
+      (row) => row.status === 'ACTIVE' && row.paymentPlan === 'MONTHLY',
+    )) {
+      const klass = classes.find((row) => row.id === student.classId)
+      const level = student.educationLevelId || klass?.educationLevelId || klass?.level
+      const category = feeCategoryFor(student.residency, level)
+      const baseAmount = feeAmountFor(mockFeePolicy.fees!, category, 'MONTHLY')
+      if (baseAmount <= 0) continue
+      for (const installment of monthlyInstalments(
+        term.startDate,
+        mockFeePolicy.monthsPerTerm,
+        mockFeePolicy.overdueGraceDays,
+      )) {
+        const periodStart = `${installment.issueDate.slice(0, 7)}-01`
+        const [year, month] = installment.issueDate.slice(0, 7).split('-').map(Number)
+        const periodEnd = new Date(Date.UTC(year!, month!, 0)).toISOString().slice(0, 10)
+        const adjusted = scholarshipAdjustedFeeAmount(
+          baseAmount,
+          periodStart,
+          periodEnd,
+          mockScholarships.filter((grant) => grant.studentId === student.id && grant.active),
+          term.id,
+        )
+        const scholarshipAmount = Math.round((baseAmount - adjusted) * 100) / 100
+        const id = monthlyInvoiceId(term.id, student.id, installment.instalment)
+        const existing = invoices.find((row) => row.id === id)
+        if (!existing) {
+          invoices.push({
+            id,
+            number: `INV-${term.id.replace(/^term-/, '')}-${student.studentNumber}-M${installment.instalment}`,
+            studentId: student.id,
+            dueDate: installment.dueDate,
+            total: baseAmount,
+            paid: 0,
+            scholarshipAmount,
+            status: scholarshipAmount >= baseAmount ? 'PAID' : 'OPEN',
+            termId: term.id,
+            termName: term.name,
+            category,
+            plan: 'MONTHLY',
+            period: installment.period,
+            createdAt: new Date().toISOString(),
+          })
+          created += 1
+        } else if (
+          existing.total !== baseAmount ||
+          (existing.scholarshipAmount ?? 0) !== scholarshipAmount
+        ) {
+          existing.total = baseAmount
+          existing.scholarshipAmount = scholarshipAmount
+          existing.category = category
+          existing.termName = term.name
+          existing.status =
+            existing.paid + scholarshipAmount >= baseAmount
+              ? 'PAID'
+              : existing.paid > 0
+                ? 'PARTIAL'
+                : 'OPEN'
+          updated += 1
+        } else {
+          unchanged += 1
+        }
+      }
+    }
+    return mockRequest<import('@/types').TermBillingResult>({
+      termId: term.id,
+      termName: term.name,
+      created,
+      updated,
+      unchanged,
       skipped: 0,
-    }),
+    })
+  },
   billCurrentMonth: async (studentId: string) => {
     const student = students.find((row) => row.id === studentId)
     if (!student) throw new Error('Student not found')
@@ -1108,18 +1221,25 @@ const mockCatalogService = {
           grant.startDate <= periodEnd &&
           (!grant.endDate || grant.endDate >= periodStart),
       ),
+      term.id,
     )
+    const scholarshipAmount = Math.round((baseAmount - amount) * 100) / 100
     const id = monthlyInvoiceId(term.id, student.id, installment.instalment)
     const existing = invoices.find((row) => row.id === id)
     if (existing) {
-      existing.total = amount
+      existing.total = baseAmount
+      existing.scholarshipAmount = scholarshipAmount
       existing.category = category
       existing.plan = 'MONTHLY'
       existing.termId = term.id
       existing.termName = term.name
       existing.period = installment.period
       existing.status =
-        existing.paid >= amount ? 'PAID' : existing.paid > 0 ? 'PARTIAL' : 'OPEN'
+        existing.paid + scholarshipAmount >= baseAmount
+          ? 'PAID'
+          : existing.paid > 0
+            ? 'PARTIAL'
+            : 'OPEN'
       return mockRequest<import('@/types').TermBillingResult>({
         termId: term.id,
         termName: term.name,
@@ -1134,9 +1254,10 @@ const mockCatalogService = {
       studentId: student.id,
       number: `INV-${term.id.replace(/^term-/, '')}-${student.studentNumber}-M${installment.instalment}`,
       dueDate: installment.dueDate,
-      total: amount,
+      total: baseAmount,
       paid: 0,
-      status: amount === 0 ? 'PAID' : 'OPEN',
+      scholarshipAmount,
+      status: scholarshipAmount >= baseAmount ? 'PAID' : 'OPEN',
       termId: term.id,
       termName: term.name,
       category,
@@ -1156,21 +1277,68 @@ const mockCatalogService = {
   recordPayment: async (
     input: import('@/types').RecordPaymentInput,
   ): Promise<import('@/types').RecordPaymentResult> => {
-    const invoice = invoices.find((i) => i.id === input.invoiceId)
-    if (!invoice) throw new Error('Invoice not found')
-    invoice.paid = Math.min(invoice.total, invoice.paid + input.amount)
-    invoice.status = invoice.paid >= invoice.total ? 'PAID' : 'PARTIAL'
-    const payment: Payment = {
-      id: `pay-${Date.now()}`,
-      studentId: input.studentId,
-      invoiceId: input.invoiceId,
-      amount: input.amount,
-      method: input.method,
-      status: 'CONFIRMED',
-      paidAt: input.paidAt ?? new Date().toISOString(),
-      receiptNumber: input.receiptNumber || `VHS-${1000 + payments.length + 1}`,
+    const requested = input.allocations?.length
+      ? input.allocations
+      : [{ invoiceId: input.invoiceId, amount: input.amount }]
+    if (
+      requested[0]?.invoiceId !== input.invoiceId ||
+      Math.abs(
+        requested.reduce((sum, allocation) => sum + allocation.amount, 0) - input.amount,
+      ) > 0.001
+    ) {
+      throw new Error('Payment allocations must cover the entered amount')
     }
-    payments.unshift(payment)
+    const targetRows = requested.map((allocation) => {
+      const target = invoices.find((row) => row.id === allocation.invoiceId)
+      if (!target || target.studentId !== input.studentId) {
+        throw new Error('Invoice not found for this student')
+      }
+      if (allocation.amount > invoiceBalance(target) + 0.001) {
+        throw new Error(`Payment exceeds the balance on ${target.number}`)
+      }
+      return { target, amount: allocation.amount }
+    })
+    if (
+      targetRows.length > 1 &&
+      (targetRows.some((row) => row.target.plan !== 'MONTHLY') ||
+        targetRows.some((row) => row.target.termId !== targetRows[0]!.target.termId) ||
+        targetRows.some(
+          (row, index) =>
+            index > 0 && row.target.dueDate < targetRows[index - 1]!.target.dueDate,
+        ))
+    ) {
+      throw new Error('Split payments must follow monthly invoices in the same term')
+    }
+    const usedReceipts = new Set(payments.map((payment) => payment.receiptNumber))
+    let generated = 0
+    const recorded = targetRows.map(({ target, amount }, index) => {
+      const receiptNumber =
+        index === 0 && input.receiptNumber
+          ? input.receiptNumber
+          : `${mockFeePolicy.receiptPrefix}-${mockFeePolicy.nextReceiptNumber + generated++}`
+      if (usedReceipts.has(receiptNumber)) throw new Error(`Receipt ${receiptNumber} already exists`)
+      usedReceipts.add(receiptNumber)
+      target.paid += amount
+      target.status =
+        target.paid + (target.scholarshipAmount ?? 0) >= target.total
+          ? 'PAID'
+          : target.paid > 0
+            ? 'PARTIAL'
+            : 'OPEN'
+      const payment: Payment = {
+        id: `pay-${Date.now()}-${index}`,
+        studentId: input.studentId,
+        invoiceId: target.id,
+        amount,
+        method: input.method,
+        status: 'CONFIRMED',
+        paidAt: input.paidAt ?? new Date().toISOString(),
+        receiptNumber,
+      }
+      payments.unshift(payment)
+      return { payment, invoice: { ...target } }
+    })
+    mockFeePolicy.nextReceiptNumber += generated
     const today = new Date().toISOString().slice(0, 10)
     const currentMonthLabel = new Date().toLocaleDateString('en-GB', {
       month: 'long',
@@ -1182,8 +1350,8 @@ const mockCatalogService = {
           i.studentId === input.studentId &&
           (i.dueDate <= today || (i.plan === 'MONTHLY' && i.period === currentMonthLabel)),
       )
-      .every((i) => i.paid >= i.total)
-    return mockRequest({ payment, invoice: { ...invoice }, feesCleared })
+      .every((i) => i.paid + (i.scholarshipAmount ?? 0) >= i.total)
+    return mockRequest({ ...recorded[0]!, feesCleared, allocations: recorded })
   },
   reversePayment: async (id: string): Promise<Payment> => {
     const payment = payments.find((p) => p.id === id)
@@ -1192,7 +1360,12 @@ const mockCatalogService = {
     const invoice = invoices.find((i) => i.id === payment.invoiceId)
     if (invoice) {
       invoice.paid = Math.max(0, invoice.paid - payment.amount)
-      invoice.status = invoice.paid <= 0 ? 'OPEN' : 'PARTIAL'
+      invoice.status =
+        invoice.paid + (invoice.scholarshipAmount ?? 0) >= invoice.total
+          ? 'PAID'
+          : invoice.paid <= 0
+            ? 'OPEN'
+            : 'PARTIAL'
     }
     return mockRequest({ ...payment })
   },

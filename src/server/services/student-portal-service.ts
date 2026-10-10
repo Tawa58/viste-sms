@@ -5,6 +5,7 @@ import { getAdminAuth, getAdminDb } from '@/lib/firebase/admin'
 import {
   currentMonthPeriod,
   invoiceBlocksPortal,
+  invoiceBalance,
   invoicesForBillingPeriod,
 } from '@/lib/fees'
 import { writeAuditLog } from '@/server/audit/logger'
@@ -95,13 +96,20 @@ async function portalFeeStatus(
   for (const inv of currentInvoices) {
     if (!invoiceBlocksPortal(inv)) continue
     const paid = await computeConfirmedPaid(inv.id)
-    outstanding += Math.max(0, (inv.total ?? 0) - paid)
+    outstanding += invoiceBalance({ ...inv, paid })
   }
   if (outstanding > 0) {
     return {
       cleared: false,
       message: `Fees not cleared — outstanding balance ${outstanding.toFixed(2)}.`,
     }
+  }
+  if (
+    currentInvoices.some(
+      (inv) => invoiceBlocksPortal(inv) && (inv.scholarshipAmount ?? 0) > 0,
+    )
+  ) {
+    return { cleared: true, message: 'Cleared by scholarship' }
   }
   return { cleared: true }
 }

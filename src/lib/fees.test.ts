@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   currentBillingTerm,
   balanceForBillingPeriod,
+  allocateMonthlyPayment,
   feeAmountFor,
   feeCategoryFor,
   invoicesForBillingPeriod,
+  invoiceBalance,
   invoiceBlocksPortal,
   monthlyInstalments,
   monthlyInvoiceId,
@@ -78,6 +80,25 @@ describe('invoicesForBillingPeriod', () => {
         'June 2026',
       ),
     ).toBe(156)
+  })
+
+  it('deducts scholarship credit from the remaining invoice balance', () => {
+    expect(invoiceBalance({ total: 456, paid: 300, scholarshipAmount: 100 })).toBe(56)
+    expect(invoiceBalance({ total: 456, paid: 0, scholarshipAmount: 456 })).toBe(0)
+  })
+
+  it('allocates monthly payments from the selected month forward within its term', () => {
+    const invoices = [
+      { id: 'oct', termId: 'term-2', plan: 'MONTHLY' as const, dueDate: '2026-10-01', total: 45, paid: 0 },
+      { id: 'sep', termId: 'term-2', plan: 'MONTHLY' as const, dueDate: '2026-09-01', total: 45, paid: 0 },
+      { id: 'nov', termId: 'term-2', plan: 'MONTHLY' as const, dueDate: '2026-11-01', total: 45, paid: 0 },
+      { id: 'dec', termId: 'term-3', plan: 'MONTHLY' as const, dueDate: '2026-12-01', total: 45, paid: 0 },
+    ]
+
+    expect(allocateMonthlyPayment(invoices, 'sep', 90)).toEqual([
+      { invoiceId: 'sep', amount: 45 },
+      { invoiceId: 'oct', amount: 45 },
+    ])
   })
 })
 
@@ -157,6 +178,22 @@ describe('scholarshipAdjustedFeeAmount', () => {
         { startDate: '2026-12-01', endDate: '2026-12-31', feeCoveragePercent: 100 },
       ]),
     ).toBe(0)
+  })
+
+  it('applies a term-assigned grant only to the selected term', () => {
+    const grant = {
+      termId: 'term-2',
+      startDate: '2026-05-01',
+      endDate: '2026-08-31',
+      feeCoveragePercent: 100,
+    }
+
+    expect(
+      scholarshipAdjustedFeeAmount(456, '2026-05-01', '2026-08-31', [grant], 'term-2'),
+    ).toBe(0)
+    expect(
+      scholarshipAdjustedFeeAmount(456, '2026-01-01', '2026-03-31', [grant], 'term-1'),
+    ).toBe(456)
   })
 })
 
