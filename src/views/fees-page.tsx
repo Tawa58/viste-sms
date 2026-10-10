@@ -47,6 +47,7 @@ import {
   FEE_CATEGORIES,
   FEE_LEVELS,
   PAYMENT_PLANS,
+  currentBillingTerm,
   feeCategoryFor,
   feeCategoryLabel,
   hasAnyFee,
@@ -66,6 +67,7 @@ import type {
   SchoolClass,
   Student,
   StudentPortalAccess,
+  Term,
 } from '@/types'
 
 type AccountState = 'CLEARED' | 'OWING' | 'OVERDUE' | 'NOT_BILLED'
@@ -103,6 +105,8 @@ const PAYMENT_METHODS = [
 ]
 
 const PAGE = 50
+const UNASSIGNED_TERM_ID = '__unassigned__'
+const MONTHLY_PAYMENT = '__monthly__'
 
 function formatMoney(amount: number, currency: string) {
   try {
@@ -120,6 +124,10 @@ function invoiceBalance(invoice: Invoice) {
   return Math.max(0, Math.round((invoice.total - invoice.paid) * 100) / 100)
 }
 
+function currentMonthPeriod(date = new Date()) {
+  return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+}
+
 export function FeesPage() {
   const { user, permissions } = useAuth()
   const canBill = hasAppPermission(permissions, 'fees.create')
@@ -133,6 +141,8 @@ export function FeesPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [classes, setClasses] = useState<SchoolClass[]>([])
+  const [terms, setTerms] = useState<Term[]>([])
+  const [selectedTermId, setSelectedTermId] = useState('')
   const [policy, setPolicy] = useState<FeePolicy | null>(null)
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<'all' | AccountState>('all')
@@ -148,17 +158,26 @@ export function FeesPage() {
   )
 
   const load = useCallback(async () => {
-    const [inv, pay, stu, cls, pol] = await Promise.all([
+    const [inv, pay, stu, feeCatalog, pol] = await Promise.all([
       catalogService.getInvoices(),
       catalogService.getPayments(),
       studentService.list(),
-      catalogService.getClasses().catch(() => [] as SchoolClass[]),
+      catalogService.getTermsAndClasses(),
       catalogService.getFeePolicy().catch(() => null),
     ])
+    const { terms: termRows, classes: cls } = feeCatalog
     setInvoices(inv)
     setPayments(pay)
     setStudents(stu)
     setClasses(cls)
+    setTerms(termRows)
+    setSelectedTermId((current) =>
+      termRows.some((term) => term.id === current) ||
+      (current === UNASSIGNED_TERM_ID && inv.some((invoice) => !invoice.termId))
+        ? current
+        : (currentBillingTerm(termRows)?.id ??
+          (inv.some((invoice) => !invoice.termId) ? UNASSIGNED_TERM_ID : '')),
+    )
     setPolicy(pol)
   }, [])
 
@@ -173,10 +192,31 @@ export function FeesPage() {
 
   const currency = policy?.currency ?? 'USD'
   const money = useCallback((n: number) => formatMoney(n, currency), [currency])
+  const selectedTerm = terms.find((term) => term.id === selectedTermId)
+  const currentTerm = currentBillingTerm(terms)
+  const hasUnassignedInvoices = invoices.some((invoice) => !invoice.termId)
+  const termInvoices = useMemo(
+    () =>
+      selectedTermId === UNASSIGNED_TERM_ID
+        ? invoices.filter((invoice) => !invoice.termId)
+        : selectedTerm
+          ? invoices.filter((invoice) => invoice.termId === selectedTerm.id)
+          : [],
+    [invoices, selectedTerm, selectedTermId],
+  )
+  const periodInvoices = useMemo(
+    () =>
+      termInvoices.filter((invoice) =>
+        invoice.plan === 'MONTHLY'
+          ? invoice.period === currentMonthPeriod()
+          : true,
+      ),
+    [termInvoices],
+  )
 
   const accounts = useMemo<StudentAccount[]>(() => {
     const byStudent = new Map<string, Invoice[]>()
-    for (const inv of invoices) {
+    for (const inv of termInvoices) {
       const list = byStudent.get(inv.studentId) ?? []
       list.push(inv)
       byStudent.set(inv.studentId, list)
@@ -187,15 +227,20 @@ export function FeesPage() {
         const list = [...(byStudent.get(student.id) ?? [])].sort((a, b) =>
           a.dueDate.localeCompare(b.dueDate),
         )
-        const billed = list.reduce((sum, i) => sum + i.total, 0)
-        const paid = list.reduce((sum, i) => sum + i.paid, 0)
-        const balance = list.reduce((sum, i) => sum + invoiceBalance(i), 0)
+        const plan: PaymentPlan = student.paymentPlan ?? 'TERMLY'
+        const displayedInvoices =
+          plan === 'MONTHLY'
+            ? list.filter((invoice) => invoice.plan === 'MONTHLY' && invoice.period === currentMonthPeriod())
+            : list.filter((invoice) => invoice.plan !== 'MONTHLY')
+        const billed = displayedInvoices.reduce((sum, i) => sum + i.total, 0)
+        const paid = displayedInvoices.reduce((sum, i) => sum + i.paid, 0)
+        const balance = displayedInvoices.reduce((sum, i) => sum + invoiceBalance(i), 0)
         const state: AccountState =
-          list.length === 0
+          displayedInvoices.length === 0
             ? 'NOT_BILLED'
             : balance <= 0
               ? 'CLEARED'
-              : list.some((i) => i.status === 'OVERDUE' && invoiceBalance(i) > 0)
+              : displayedInvoices.some((i) => i.status === 'OVERDUE' && invoiceBalance(i) > 0)
                 ? 'OVERDUE'
                 : 'OWING'
         const level =
@@ -204,7 +249,7 @@ export function FeesPage() {
         return {
           student,
           category: feeCategoryFor(student.residency, level),
-          plan: student.paymentPlan ?? 'TERMLY',
+          plan,
           invoices: list,
           billed,
           paid,
@@ -213,7 +258,7 @@ export function FeesPage() {
         }
       })
       .sort((a, b) => fullName(a.student).localeCompare(fullName(b.student)))
-  }, [students, invoices, classes])
+  }, [students, termInvoices, classes])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -232,16 +277,17 @@ export function FeesPage() {
   useEffect(() => setAccountsShown(PAGE), [search, stateFilter, categoryFilter, planFilter])
 
   const totals = useMemo(() => {
-    const billed = invoices.reduce((s, i) => s + i.total, 0)
+    const invoiceIds = new Set(periodInvoices.map((invoice) => invoice.id))
+    const billed = periodInvoices.reduce((s, i) => s + i.total, 0)
     const collected = payments
-      .filter((p) => p.status === 'CONFIRMED')
+      .filter((p) => p.status === 'CONFIRMED' && invoiceIds.has(p.invoiceId))
       .reduce((s, p) => s + p.amount, 0)
-    const outstanding = invoices.reduce((s, i) => s + invoiceBalance(i), 0)
-    const overdue = invoices
+    const outstanding = periodInvoices.reduce((s, i) => s + invoiceBalance(i), 0)
+    const overdue = periodInvoices
       .filter((i) => i.status === 'OVERDUE')
       .reduce((s, i) => s + invoiceBalance(i), 0)
     return { billed, collected, outstanding, overdue }
-  }, [invoices, payments])
+  }, [periodInvoices, payments])
 
   const categoryCounts = useMemo(() => {
     const counts = Object.fromEntries(FEE_CATEGORIES.map((c) => [c.value, 0])) as Record<
@@ -267,6 +313,7 @@ export function FeesPage() {
         success: (r) => `${r.termName}: ${r.created} new, ${r.updated} updated invoices`,
         error: 'Could not bill the term',
       })
+      setSelectedTermId(currentTerm?.id ?? '')
       await load()
     } finally {
       setBilling(false)
@@ -313,7 +360,7 @@ export function FeesPage() {
     <div>
       <PageHeader
         title="Fees & Payments"
-        description="School fees by level and student type, termly or monthly plans, payments, receipts, and balances."
+        description="Review invoices and balances for one term at a time. Past terms remain available in the term selector."
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Fees & Payments' }]}
         actions={
           <div className="flex flex-wrap gap-2">
@@ -350,21 +397,21 @@ export function FeesPage() {
       ) : null}
 
       <div className="grid grid-cols-2 gap-2 sm:gap-4 xl:grid-cols-4">
-        <StatCard label="Total billed" value={money(totals.billed)} icon={Receipt} />
+        <StatCard label="Billed for period" value={money(totals.billed)} icon={Receipt} />
         <StatCard
-          label="Total collected"
+          label="Collected for period"
           value={money(totals.collected)}
           icon={Banknote}
           tone="success"
         />
         <StatCard
-          label="Outstanding"
+          label="Period balance"
           value={money(totals.outstanding)}
           icon={Wallet}
           tone="warning"
         />
         <StatCard
-          label="Overdue"
+          label="Period overdue"
           value={money(totals.overdue)}
           icon={CircleAlert}
           tone="warning"
@@ -435,12 +482,17 @@ export function FeesPage() {
         <CardHeader>
           <CardTitle>Student accounts</CardTitle>
           <CardDescription>
+            {selectedTerm
+              ? `Termly invoices show the selected term balance. Monthly-plan balances show this month only. Select another term to review it.`
+              : selectedTermId === UNASSIGNED_TERM_ID
+                ? 'These invoices do not have an academic term recorded; they are kept separate from current-term balances.'
+                : 'No academic terms are configured, so term-scoped balances cannot be shown.'}{' '}
             A student whose fees are cleared can be given a portal passcode: their student number is
             the username and the passcode is the password for the results and progress portal.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto]">
             <SearchInput
               id="fees-search"
               name="fees-search"
@@ -480,6 +532,26 @@ export function FeesPage() {
                 </option>
               ))}
             </Select>
+            <Select
+              value={selectedTermId}
+              onChange={(e) => setSelectedTermId(e.target.value)}
+              aria-label="Academic term"
+            >
+              {!terms.length && !hasUnassignedInvoices ? (
+                <option value="">No terms configured</option>
+              ) : null}
+              {hasUnassignedInvoices ? (
+                <option value={UNASSIGNED_TERM_ID}>Unassigned / legacy invoices</option>
+              ) : null}
+              {terms
+                .slice()
+                .sort((a, b) => b.startDate.localeCompare(a.startDate))
+                .map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.id === currentTerm?.id ? `${term.name} (current)` : term.name}
+                  </option>
+                ))}
+            </Select>
           </div>
 
           {filtered.length === 0 ? (
@@ -493,9 +565,9 @@ export function FeesPage() {
                   <tr>
                     <DataTableHeaderCell>Student</DataTableHeaderCell>
                     <DataTableHeaderCell>Type</DataTableHeaderCell>
-                    <DataTableHeaderCell className="text-right">Billed</DataTableHeaderCell>
-                    <DataTableHeaderCell className="text-right">Paid</DataTableHeaderCell>
-                    <DataTableHeaderCell className="text-right">Balance</DataTableHeaderCell>
+                    <DataTableHeaderCell className="text-right">Period billed</DataTableHeaderCell>
+                    <DataTableHeaderCell className="text-right">Period paid</DataTableHeaderCell>
+                    <DataTableHeaderCell className="text-right">Period balance</DataTableHeaderCell>
                     <DataTableHeaderCell>Status</DataTableHeaderCell>
                     <DataTableHeaderCell className="text-right">Actions</DataTableHeaderCell>
                   </tr>
@@ -516,7 +588,10 @@ export function FeesPage() {
                       </DataTableCell>
                       <DataTableCell className="text-xs">
                         <p>{feeCategoryLabel(a.category)}</p>
-                        <p className="text-muted-foreground">{paymentPlanLabel(a.plan)} plan</p>
+                        <p className="text-muted-foreground">
+                          {paymentPlanLabel(a.plan)} plan
+                          {a.plan === 'MONTHLY' ? ` · ${currentMonthPeriod()}` : ''}
+                        </p>
                       </DataTableCell>
                       <DataTableCell className="text-right tabular-nums">
                         {money(a.billed)}
@@ -533,7 +608,10 @@ export function FeesPage() {
                         </Badge>
                       </DataTableCell>
                       <DataTableCell className="text-right">
-                        {a.balance > 0 && canRecord ? (
+                        {(a.balance > 0 ||
+                          (a.plan === 'MONTHLY' &&
+                            a.invoices.some((invoice) => invoiceBalance(invoice) > 0))) &&
+                        canRecord ? (
                           <Button
                             size="sm"
                             variant="outline"
@@ -632,7 +710,13 @@ export function FeesPage() {
       <RecordPaymentDialog
         open={paymentDialog !== null}
         initialStudentId={paymentDialog?.studentId}
+        selectedTermId={selectedTermId}
+        selectedTermIsCurrent={Boolean(
+          selectedTerm && currentTerm && selectedTerm.id === currentTerm.id,
+        )}
         accounts={accounts}
+        allInvoices={invoices}
+        terms={terms}
         currency={currency}
         onOpenChange={(open) => {
           if (!open) setPaymentDialog(null)
@@ -653,7 +737,11 @@ export function FeesPage() {
 function RecordPaymentDialog({
   open,
   initialStudentId,
+  selectedTermId,
+  selectedTermIsCurrent,
   accounts,
+  allInvoices,
+  terms,
   currency,
   onOpenChange,
   onRecorded,
@@ -661,7 +749,11 @@ function RecordPaymentDialog({
 }: {
   open: boolean
   initialStudentId?: string
+  selectedTermId: string
+  selectedTermIsCurrent: boolean
   accounts: StudentAccount[]
+  allInvoices: Invoice[]
+  terms: Term[]
   currency: string
   onOpenChange: (open: boolean) => void
   onRecorded: (result: RecordPaymentResult, student: Student) => Promise<void>
@@ -669,6 +761,7 @@ function RecordPaymentDialog({
 }) {
   const [query, setQuery] = useState('')
   const [studentId, setStudentId] = useState('')
+  const [feePeriod, setFeePeriod] = useState('')
   const [invoiceId, setInvoiceId] = useState('')
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState(PAYMENT_METHODS[0]!)
@@ -678,31 +771,71 @@ function RecordPaymentDialog({
   const [billing, setBilling] = useState(false)
 
   const account = accounts.find((a) => a.student.id === studentId)
+  const periodInvoices = useMemo(
+    () =>
+      allInvoices.filter(
+        (candidate) =>
+          candidate.studentId === studentId &&
+          (feePeriod === MONTHLY_PAYMENT
+            ? candidate.plan === 'MONTHLY'
+            : candidate.plan !== 'MONTHLY' &&
+              (candidate.termId ?? UNASSIGNED_TERM_ID) === feePeriod),
+      ),
+    [allInvoices, feePeriod, studentId],
+  )
   const unpaid = useMemo(
-    () => account?.invoices.filter((i) => invoiceBalance(i) > 0) ?? [],
-    [account],
+    () => periodInvoices.filter((i) => invoiceBalance(i) > 0),
+    [periodInvoices],
   )
   const invoice = unpaid.find((i) => i.id === invoiceId)
-
-  function currentMonthLabel() {
-    return new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
-  }
+  const enteredAmount = Number(amount)
+  const balanceAfterPayment = invoice
+    ? Math.max(
+        0,
+        invoiceBalance(invoice) - (Number.isFinite(enteredAmount) ? enteredAmount : 0),
+      )
+    : 0
 
   useEffect(() => {
     if (invoiceId || unpaid.length === 0) return
-    const next = unpaid.find((i) => i.period === currentMonthLabel()) ?? unpaid[0]!
+    const next = unpaid.find((i) => i.period === currentMonthPeriod()) ?? unpaid[0]!
     setInvoiceId(next.id)
     setAmount(String(invoiceBalance(next)))
   }, [invoiceId, unpaid])
 
   function selectStudent(id: string) {
     setStudentId(id)
-    const first = accounts
-      .find((a) => a.student.id === id)
-      ?.invoices.find((i) => i.period === currentMonthLabel() && invoiceBalance(i) > 0) ??
-      accounts
-        .find((a) => a.student.id === id)
-        ?.invoices.find((i) => invoiceBalance(i) > 0)
+    const selectedAccount = accounts.find((a) => a.student.id === id)
+    const nextPeriod = selectedAccount?.plan === 'MONTHLY' ? MONTHLY_PAYMENT : selectedTermId
+    setFeePeriod(nextPeriod)
+    const candidates = allInvoices.filter(
+      (candidate) =>
+        candidate.studentId === id &&
+        (nextPeriod === MONTHLY_PAYMENT
+          ? candidate.plan === 'MONTHLY'
+          : candidate.plan !== 'MONTHLY' &&
+            (candidate.termId ?? UNASSIGNED_TERM_ID) === nextPeriod),
+    )
+    const first =
+      candidates.find((i) => i.period === currentMonthPeriod() && invoiceBalance(i) > 0) ??
+      candidates.find((i) => invoiceBalance(i) > 0)
+    setInvoiceId(first?.id ?? '')
+    setAmount(first ? String(invoiceBalance(first)) : '')
+  }
+
+  function selectFeePeriod(value: string) {
+    setFeePeriod(value)
+    const candidates = allInvoices.filter(
+      (candidate) =>
+        candidate.studentId === studentId &&
+        (value === MONTHLY_PAYMENT
+          ? candidate.plan === 'MONTHLY'
+          : candidate.plan !== 'MONTHLY' &&
+            (candidate.termId ?? UNASSIGNED_TERM_ID) === value),
+    )
+    const first =
+      candidates.find((i) => i.period === currentMonthPeriod() && invoiceBalance(i) > 0) ??
+      candidates.find((i) => invoiceBalance(i) > 0)
     setInvoiceId(first?.id ?? '')
     setAmount(first ? String(invoiceBalance(first)) : '')
   }
@@ -812,8 +945,10 @@ function RecordPaymentDialog({
         <DialogHeader>
           <DialogTitle>Record payment</DialogTitle>
           <DialogDescription>
-            The receipt number is assigned automatically unless you type one from a manual receipt
-            book.
+            Choose Term 1, Term 2, Term 3, or Monthly payment. Termly payments go to that term's
+            invoice; monthly payments go to the selected month. Partial payments update only the
+            chosen invoice. The receipt number is assigned automatically unless you type one from
+            a manual receipt book.
           </DialogDescription>
         </DialogHeader>
 
@@ -822,7 +957,9 @@ function RecordPaymentDialog({
             <div className="rounded-lg border border-border px-3 py-2 text-sm">
               <p className="font-medium">{fullName(account.student)}</p>
               <p className="text-xs text-muted-foreground">
-                {account.student.studentNumber} · balance {formatMoney(account.balance, currency)}
+                {account.student.studentNumber} ·{' '}
+                {account.plan === 'MONTHLY' ? `${currentMonthPeriod()} balance` : 'Term balance'}{' '}
+                {formatMoney(account.balance, currency)}
               </p>
             </div>
           ) : (
@@ -854,7 +991,30 @@ function RecordPaymentDialog({
           {account ? (
             <div className="space-y-2">
               <Field>
-                <Label htmlFor="payment-invoice">Invoice</Label>
+                <Label htmlFor="payment-period">Fee period</Label>
+                <Select
+                  id="payment-period"
+                  value={feePeriod}
+                  onChange={(e) => selectFeePeriod(e.target.value)}
+                >
+                  {terms
+                    .slice()
+                    .sort((a, b) => a.startDate.localeCompare(b.startDate))
+                    .map((term, index) => (
+                      <option key={term.id} value={term.id}>
+                        {term.name || `Term ${index + 1}`}
+                      </option>
+                    ))}
+                  <option value={MONTHLY_PAYMENT}>Monthly payment</option>
+                  {allInvoices.some((candidate) => candidate.studentId === studentId && !candidate.termId) ? (
+                    <option value={UNASSIGNED_TERM_ID}>Unassigned / legacy term invoice</option>
+                  ) : null}
+                </Select>
+              </Field>
+              <Field>
+                <Label htmlFor="payment-invoice">
+                  {feePeriod === MONTHLY_PAYMENT ? 'Month to pay' : 'Invoice'}
+                </Label>
                 <Select
                   id="payment-invoice"
                   value={invoiceId}
@@ -867,8 +1027,10 @@ function RecordPaymentDialog({
                   {unpaid.length === 0 ? <option value="">Nothing owing</option> : null}
                   {unpaid.map((i) => (
                     <option key={i.id} value={i.id}>
-                      {[i.termName, i.period, i.number].filter(Boolean).join(' · ')} · balance{' '}
-                      {formatMoney(invoiceBalance(i), currency)}
+                      {i.plan === 'MONTHLY'
+                        ? `${i.period ?? 'Monthly invoice'}${i.termName ? ` · ${i.termName}` : ''}`
+                        : `${i.termName ?? 'Term'} · termly fee`}{' '}
+                      · balance {formatMoney(invoiceBalance(i), currency)}
                     </option>
                   ))}
                 </Select>
@@ -880,7 +1042,7 @@ function RecordPaymentDialog({
                   </p>
                 ) : null}
               </Field>
-              {account.plan === 'MONTHLY' ? (
+              {account.plan === 'MONTHLY' && selectedTermIsCurrent ? (
                 <Button
                   type="button"
                   size="sm"
@@ -904,10 +1066,16 @@ function RecordPaymentDialog({
                 type="number"
                 inputMode="decimal"
                 min={0}
+                max={invoice ? invoiceBalance(invoice) : undefined}
                 step="0.01"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
               />
+              {invoice ? (
+                <p className="text-xs text-muted-foreground">
+                  Balance after this payment: {formatMoney(balanceAfterPayment, currency)}
+                </p>
+              ) : null}
             </Field>
             <Field>
               <Label htmlFor="payment-method">Method</Label>

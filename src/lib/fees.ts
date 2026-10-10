@@ -8,6 +8,7 @@ import type {
   PaymentPlan,
   StudentScholarship,
   StudentResidency,
+  Term,
 } from '@/types'
 
 export const RESIDENCY_OPTIONS: { value: StudentResidency; label: string }[] = [
@@ -70,6 +71,19 @@ export function residencyLabel(residency: StudentResidency | undefined | null) {
 
 export function paymentPlanLabel(plan: PaymentPlan | undefined | null) {
   return plan === 'MONTHLY' ? 'Monthly' : 'Termly'
+}
+
+/** Match invoice billing: the active term, otherwise the next upcoming term, otherwise the latest term. */
+export function currentBillingTerm(
+  terms: Pick<Term, 'id' | 'startDate' | 'endDate'>[],
+  today = new Date().toISOString().slice(0, 10),
+) {
+  const ordered = [...terms].sort((a, b) => a.startDate.localeCompare(b.startDate))
+  return (
+    ordered.find((term) => term.startDate <= today && today <= term.endDate) ??
+    ordered.find((term) => term.startDate > today) ??
+    ordered[ordered.length - 1]
+  )
 }
 
 export function feeCategoryLabel(category: FeeCategory | LegacyFeeCategory | undefined | null) {

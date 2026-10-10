@@ -412,6 +412,10 @@ export const apiCatalogService = {
   async getClasses(): Promise<SchoolClass[]> {
     return (await loadCatalogOnce()).classes
   },
+  async getTermsAndClasses() {
+    const catalog = await loadCatalogOnce()
+    return { terms: catalog.terms ?? [], classes: catalog.classes }
+  },
   async getStreams(): Promise<Stream[]> {
     return (await loadCatalogOnce()).streams
   },

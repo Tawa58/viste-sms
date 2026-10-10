@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  currentBillingTerm,
   feeAmountFor,
   feeCategoryFor,
   invoiceBlocksPortal,
@@ -10,6 +11,30 @@ import {
   scholarshipAdjustedFeeAmount,
   termInvoiceId,
 } from '@/lib/fees'
+
+describe('currentBillingTerm', () => {
+  const terms = [
+    { id: 'term-1', startDate: '2026-01-01', endDate: '2026-03-31' },
+    { id: 'term-2', startDate: '2026-05-01', endDate: '2026-08-31' },
+    { id: 'term-3', startDate: '2026-09-01', endDate: '2026-12-31' },
+  ]
+
+  it('selects the term containing today', () => {
+    expect(currentBillingTerm(terms, '2026-06-15')?.id).toBe('term-2')
+  })
+
+  it('selects the next term during a break', () => {
+    expect(currentBillingTerm(terms, '2026-04-15')?.id).toBe('term-2')
+  })
+
+  it('falls back to the latest term after the calendar ends', () => {
+    expect(currentBillingTerm(terms, '2027-01-01')?.id).toBe('term-3')
+  })
+
+  it('returns no term when the calendar is empty', () => {
+    expect(currentBillingTerm([], '2026-01-01')).toBeUndefined()
+  })
+})
 
 describe('feeCategoryFor', () => {
   it('bills non-formal learners the non-formal fee at any level', () => {

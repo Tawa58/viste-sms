@@ -99,6 +99,10 @@ export const firestoreCatalogService = {
     await firestoreSchool.ensureSchoolCatalog()
     return firestoreSchool.listClasses()
   },
+  async getTermsAndClasses() {
+    await firestoreSchool.ensureSchoolCatalog()
+    return { terms: [], classes: await firestoreSchool.listClasses() }
+  },
   async getStreams() {
     await firestoreSchool.ensureSchoolCatalog()
     return firestoreSchool.listStreams()

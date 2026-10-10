@@ -480,6 +480,7 @@ const mockCatalogService = {
   getYears: (): Promise<AcademicYear[]> => mockRequest(academicYears),
   getTerms: (): Promise<Term[]> => mockRequest(terms),
   getClasses: (): Promise<SchoolClass[]> => mockRequest(classes),
+  getTermsAndClasses: () => mockRequest({ terms: [...terms], classes: [...classes] }),
   getStreams: (): Promise<Stream[]> => mockRequest(streams),
   getSubjects: (): Promise<Subject[]> => mockRequest(subjects),
   getSports: (): Promise<import('@/types').Sport[]> => mockRequest([]),
