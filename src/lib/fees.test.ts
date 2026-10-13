@@ -3,6 +3,7 @@ import {
   currentBillingTerm,
   balanceForBillingPeriod,
   allocateMonthlyPayment,
+  advanceReceiptSequence,
   feeAmountFor,
   feeCategoryFor,
   invoicesForBillingPeriod,
@@ -99,6 +100,12 @@ describe('invoicesForBillingPeriod', () => {
       { invoiceId: 'sep', amount: 45 },
       { invoiceId: 'oct', amount: 45 },
     ])
+  })
+
+  it('skips receipt numbers already in use and advances past contiguous collisions', () => {
+    expect(advanceReceiptSequence('VHS', 1000, 1, ['VHS-1000'])).toBe(1001)
+    expect(advanceReceiptSequence('VHS', 1000, 2, ['VHS-1000', 'VHS-1001'])).toBe(1002)
+    expect(advanceReceiptSequence('VHS', 1000, 1, ['VHS-1000', 'VHS-1002'])).toBe(1001)
   })
 })
 

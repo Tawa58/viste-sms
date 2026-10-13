@@ -995,7 +995,6 @@ function RecordPaymentDialog({
             r.allocations && r.allocations.length > 1
               ? `Payment allocated across ${r.allocations.length} months · receipts ${r.allocations.map(({ payment: item }) => item.receiptNumber).join(', ')}`
               : `Payment recorded · receipt ${r.payment.receiptNumber}`,
-          error: 'Could not record payment',
         },
       )
       onOpenChange(false)

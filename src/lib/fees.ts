@@ -166,6 +166,25 @@ export function allocateMonthlyPayment(
   return allocations
 }
 
+export function advanceReceiptSequence(
+  prefix: string,
+  start: number,
+  count: number,
+  occupiedReceipts: Iterable<string>,
+) {
+  const occupied = new Set(occupiedReceipts)
+  let candidate = start
+  while (true) {
+    let highestCollision = candidate - 1
+    for (let offset = 0; offset < count; offset += 1) {
+      const receipt = `${prefix}-${candidate + offset}`
+      if (occupied.has(receipt)) highestCollision = Math.max(highestCollision, candidate + offset)
+    }
+    if (highestCollision < candidate) return candidate
+    candidate = highestCollision + 1
+  }
+}
+
 export function feeCategoryLabel(category: FeeCategory | LegacyFeeCategory | undefined | null) {
   if (!category) return '—'
   return (

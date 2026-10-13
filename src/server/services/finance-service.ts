@@ -22,6 +22,7 @@ import {
   currentMonthPeriod,
   scholarshipAdjustedFeeAmount,
   invoiceBalance,
+  advanceReceiptSequence,
 } from '@/lib/fees'
 import type { PaymentCreateInput } from '@/server/validators/school'
 import type {
@@ -598,26 +599,40 @@ export async function createPayment(
     const policy = policySnap?.data() as Partial<FeePolicy> | undefined
     const nextReceipt = Math.max(1, Math.floor(Number(policy?.nextReceiptNumber) || 1001))
     const prefix = (policy?.receiptPrefix || 'VHS').toUpperCase()
-    let generatedCount = 0
-    const receiptNumbers = requestedAllocations.map((_, index) => {
-      if (index === 0 && manualReceipt) return manualReceipt
-      generatedCount += 1
-      return `${prefix}-${nextReceipt + generatedCount - 1}`
-    })
-
-    const duplicateReceipts = await Promise.all(
-      receiptNumbers.map((receipt) =>
-        tx.get(db.collection('payments').where('receiptNumber', '==', receipt).limit(1)),
-      ),
-    )
-    const duplicateIndex = duplicateReceipts.findIndex((snapshot) => !snapshot.empty)
-    if (duplicateIndex >= 0) {
-      const receipt = receiptNumbers[duplicateIndex]!
-      throw conflict(
-        manualReceipt && duplicateIndex === 0
-          ? `Receipt ${receipt} already exists`
-          : `Receipt ${receipt} already exists — raise "Next receipt number" in Settings → Fees.`,
+    const generatedCount = requestedAllocations.length - (manualReceipt ? 1 : 0)
+    let receiptStart = nextReceipt
+    let receiptNumbers: string[]
+    while (true) {
+      receiptStart = advanceReceiptSequence(
+        prefix,
+        receiptStart,
+        generatedCount,
+        manualReceipt ? [manualReceipt] : [],
       )
+      let generatedOffset = 0
+      receiptNumbers = requestedAllocations.map((_, index) => {
+        if (index === 0 && manualReceipt) return manualReceipt
+        return `${prefix}-${receiptStart + generatedOffset++}`
+      })
+
+      const duplicateSnapshot = await tx.get(
+        db.collection('payments').where('receiptNumber', 'in', [...new Set(receiptNumbers)]),
+      )
+      const duplicateNumbers = duplicateSnapshot.docs.map(
+        (doc) => (doc.data() as Payment).receiptNumber,
+      )
+      if (manualReceipt && duplicateNumbers.includes(manualReceipt)) {
+        throw conflict(`Receipt ${manualReceipt} already exists`)
+      }
+
+      const nextStart = advanceReceiptSequence(
+        prefix,
+        receiptStart,
+        generatedCount,
+        duplicateNumbers,
+      )
+      if (nextStart === receiptStart) break
+      receiptStart = nextStart
     }
 
     const confirmedPayments = await Promise.all(
@@ -677,7 +692,7 @@ export async function createPayment(
       tx.set(db.collection('invoices').doc(invoice.id), invoice)
     })
     if (generatedCount > 0) {
-      tx.set(policyRef, { nextReceiptNumber: nextReceipt + generatedCount }, { merge: true })
+      tx.set(policyRef, { nextReceiptNumber: receiptStart + generatedCount }, { merge: true })
     }
 
     return allocations
