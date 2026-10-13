@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Award,
@@ -26,6 +26,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { ResolvedAvatar } from '@/components/shared/resolved-avatar'
 import { SchoolLogo } from '@/components/shared/school-logo'
 import { StatCard } from '@/components/shared/stat-card'
+import { TimetableGrid } from '@/components/shared/timetable-grid'
 import { invoiceBalance } from '@/lib/fees'
 import {
   ATTENDANCE_LABEL,
@@ -46,8 +47,10 @@ import { notify } from '@/lib/notify'
 import { downloadResultSheetPdf, formatMark, formatPercent } from '@/lib/result-sheet-pdf'
 import { cn } from '@/lib/utils'
 import { fileService } from '@/services/files'
+import { timetableService } from '@/services/api'
 import type {
   AttendanceStatus,
+  ClassTimetable,
   Invoice,
   StudentPortalBundle,
   StudentPortalDocument,
@@ -620,21 +623,62 @@ export function MyAttendancePage() {
 
 /* ---------- Timetable ---------- */
 
-export function MyTimetablePage() {
+function StudentTimetableBody({ className }: { className: string }) {
   const navigate = useNavigate()
+  const [timetable, setTimetable] = useState<ClassTimetable | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    timetableService
+      .get()
+      .then((schedules) => {
+        if (active) setTimetable(schedules[0] ?? null)
+      })
+      .catch((error) => {
+        if (active) {
+          const message = error instanceof Error ? error.message : 'An unexpected error occurred'
+          setLoadError(message)
+          notify.error('Could not load your timetable', message)
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (loading) return <div className="py-8 text-center text-sm text-muted-foreground">Loading timetable…</div>
+  if (loadError) {
+    return (
+      <EmptyState
+        icon={CalendarClock}
+        title="Could not load your timetable"
+        description={loadError}
+      />
+    )
+  }
+  if (!timetable) {
+    return (
+      <EmptyState
+        icon={CalendarClock}
+        title="Timetable not published yet"
+        description={`The timetable for ${className} will appear here once the school publishes it. Until then, your subjects and teachers are listed on the Subjects page.`}
+        actionLabel="View my subjects"
+        onAction={() => navigate('/my/subjects')}
+      />
+    )
+  }
+  return <TimetableGrid schedules={[timetable]} showClass={false} />
+}
+
+export function MyTimetablePage() {
   return (
     <PortalPage title="Timetable" description="Your weekly class schedule.">
-      {(data) => (
-        <div className="space-y-4">
-          <EmptyState
-            icon={CalendarClock}
-            title="Timetable not published yet"
-            description={`The timetable for ${data.profile.className} will appear here once the school publishes it. Until then, your subjects and teachers are listed on the Subjects page.`}
-            actionLabel="View my subjects"
-            onAction={() => navigate('/my/subjects')}
-          />
-        </div>
-      )}
+      {(data) => <StudentTimetableBody className={data.profile.className} />}
     </PortalPage>
   )
 }

@@ -380,6 +380,55 @@ export interface Subject {
   active?: boolean
 }
 
+export type TimetableAudience = 'STUDENTS' | 'TEACHERS'
+export type TimetableDay =
+  | 'MONDAY'
+  | 'TUESDAY'
+  | 'WEDNESDAY'
+  | 'THURSDAY'
+  | 'FRIDAY'
+  | 'SATURDAY'
+  | 'SUNDAY'
+
+export interface TimetableEntry {
+  id: string
+  day: TimetableDay
+  startTime: string
+  endTime: string
+  subjectId: string
+  subjectName: string
+  teacherId: string
+  teacherName: string
+}
+
+export type TimetableDraftEntry = Omit<TimetableEntry, 'subjectName' | 'teacherName'> & {
+  subjectName?: string
+  teacherName?: string
+}
+
+export interface PublishTimetableInput {
+  classId: string
+  audience: TimetableAudience[]
+  entries: TimetableDraftEntry[]
+}
+
+export interface TimetableOptions {
+  classes: SchoolClass[]
+  subjects: Subject[]
+  teachers: Staff[]
+}
+
+export interface ClassTimetable {
+  id: string
+  classId: string
+  className: string
+  audience: TimetableAudience[]
+  status: 'PUBLISHED'
+  entries: TimetableEntry[]
+  updatedAt: string
+  updatedBy: string
+}
+
 export interface SportKitItem {
   id: string
   /** e.g. Jerseys, Match balls, Training balls, Cones, Bibs */

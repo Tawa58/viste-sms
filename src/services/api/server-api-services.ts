@@ -4,6 +4,7 @@
  */
 import {
   apiFetch,
+  invalidateApiCache,
   isApiClientError,
   isForbiddenOrUnauthorized,
   seedApiCache,
@@ -15,6 +16,7 @@ import type {
   AttendanceRecord,
   AuditLog,
   AuthUser,
+  ClassTimetable,
   ClassTransfer,
   ClubActivity,
   ClassResultsPeriod,
@@ -32,6 +34,8 @@ import type {
   LibraryLoan,
   Mark,
   Payment,
+  PublishTimetableInput,
+  TimetableOptions,
   RecordPaymentInput,
   RecordPaymentResult,
   ResultPortalView,
@@ -399,6 +403,25 @@ export const apiDashboardService: DashboardService = {
   },
   async getRecentActivities() {
     return (await loadDashboardOnce()).recentActivities
+  },
+}
+
+export const apiTimetableService = {
+  get(classId?: string): Promise<ClassTimetable[]> {
+    const query = classId ? `?classId=${encodeURIComponent(classId)}` : ''
+    return apiFetch<ClassTimetable[]>(`/api/v1/timetables${query}`)
+  },
+  async publish(input: PublishTimetableInput): Promise<ClassTimetable> {
+    const timetable = await apiFetch<ClassTimetable>('/api/v1/timetables', {
+      method: 'POST',
+      body: JSON.stringify(input),
+      skipCache: true,
+    })
+    invalidateApiCache('/api/v1/timetables')
+    return timetable
+  },
+  options(): Promise<TimetableOptions> {
+    return apiFetch<TimetableOptions>('/api/v1/timetables?options=1')
   },
 }
 

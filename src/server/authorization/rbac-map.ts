@@ -278,6 +278,7 @@ export const PATH_PERMISSION: Record<string, Permission | null> = {
   '/reports': 'students.read',
   '/students': 'students.read',
   '/classes': 'classes.read',
+  '/timetable': 'classes.read',
   '/subjects': 'subjects.read',
   '/sports': 'extracurricular.read',
   '/clubs': 'extracurricular.read',

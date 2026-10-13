@@ -54,6 +54,7 @@ export const mainNav: NavItem[] = [
   { label: 'Teachers & Staff', to: '/teachers', icon: GraduationCap },
   { label: 'Classes', to: '/classes', icon: School },
   { label: 'Subjects', to: '/subjects', icon: BookOpen },
+  { label: 'Timetables', to: '/timetable', icon: CalendarClock },
   { label: 'Sports', to: '/sports', icon: Dumbbell },
   { label: 'Clubs & Activities', to: '/clubs', icon: Puzzle },
   { label: 'Attendance', to: '/attendance', icon: CalendarCheck },
@@ -103,6 +104,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { label: 'Classes', to: '/classes', icon: School },
       { label: 'Subjects', to: '/subjects', icon: BookOpen },
+      { label: 'Timetables', to: '/timetable', icon: CalendarClock },
       { label: 'Sports', to: '/sports', icon: Dumbbell },
       { label: 'Clubs & Activities', to: '/clubs', icon: Puzzle },
       { label: 'Attendance', to: '/attendance', icon: CalendarCheck },

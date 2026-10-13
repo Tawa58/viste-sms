@@ -44,6 +44,7 @@ import type {
   AttendanceRecord,
   AuditLog,
   AuthUser,
+  ClassTimetable,
   Examination,
   FeeStructure,
   Guardian,
@@ -53,6 +54,7 @@ import type {
   LibraryLoan,
   Mark,
   Payment,
+  PublishTimetableInput,
   ResultPortalView,
   RolePermission,
   SchoolClass,
@@ -62,6 +64,7 @@ import type {
   Student,
   StudentScholarship,
   Subject,
+  TimetableOptions,
   Term,
   AcademicYear,
   TransportRoute,
@@ -85,6 +88,7 @@ import {
   apiExtracurricularService,
   apiStudentService,
   apiSubjectAdminService,
+  apiTimetableService,
 } from '@/services/api/server-api-services'
 
 import { readPublicEnv } from '@/lib/env'
@@ -1628,6 +1632,50 @@ export const catalogService = USE_MOCK_API
   : USE_SERVER_API
     ? apiCatalogService
     : firestoreCatalogService
+
+const mockTimetables: ClassTimetable[] = []
+
+export const timetableService = USE_MOCK_API
+  ? {
+      options: async (): Promise<TimetableOptions> =>
+        mockRequest({
+          classes: classes.filter((row) => row.status !== 'ARCHIVED'),
+          subjects: subjects.filter((row) => row.active !== false),
+          teachers: staff.filter(
+            (row) =>
+              row.status === 'ACTIVE' &&
+              (row.category === 'TEACHER' || row.accountRole === 'TEACHER'),
+          ),
+        }),
+      get: async (classId?: string) =>
+        mockRequest(mockTimetables.filter((row) => !classId || row.classId === classId)),
+      publish: async (input: PublishTimetableInput) => {
+        const now = new Date().toISOString()
+        const timetable: ClassTimetable = {
+          id: input.classId,
+          classId: input.classId,
+          className: classes.find((row) => row.id === input.classId)?.name ?? input.classId,
+          audience: [...input.audience],
+          status: 'PUBLISHED',
+          entries: input.entries.map((entry) => ({
+            ...entry,
+            subjectName:
+              subjects.find((row) => row.id === entry.subjectId)?.name ?? entry.subjectId,
+            teacherName:
+              staff
+                .filter((row) => row.id === entry.teacherId)
+                .map((row) => `${row.firstName} ${row.lastName}`.trim())[0] ?? entry.teacherId,
+          })),
+          updatedAt: now,
+          updatedBy: 'demo',
+        }
+        const existing = mockTimetables.findIndex((row) => row.classId === input.classId)
+        if (existing >= 0) mockTimetables[existing] = timetable
+        else mockTimetables.push(timetable)
+        return mockRequest(timetable, 200)
+      },
+    }
+  : apiTimetableService
 
 export const classService = USE_MOCK_API
   ? {

@@ -170,7 +170,7 @@ export function DashboardPage() {
         setFees(f)
         setPerformance(p)
         setPayments(pay.slice(0, 2))
-        setActivities(act.slice(0, 2))
+        setActivities(act.slice(0, 3))
         setAnnouncements(an.filter((x) => x.status === 'PUBLISHED').slice(0, 2))
       } catch (err) {
         console.error(err)
@@ -513,13 +513,13 @@ export function DashboardPage() {
           action={
             <Button variant="outline" size="sm" className="mt-auto w-full shrink-0 justify-between" asChild>
               <Link to="/announcements">
-                View schedule
+                View more
                 <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           }
         >
-          {upcoming.map((item) => (
+          {upcoming.slice(0, 3).map((item) => (
             <div key={item.title} className={cn('flex items-start gap-2.5', dashboardFeedItemClass)}>
               <FeedIcon icon={CalendarClock} tone="primary" size="sm" />
               <div className="min-w-0">
@@ -596,7 +596,7 @@ export function DashboardPage() {
             action={
               <Button variant="outline" size="sm" className="mt-auto w-full shrink-0 justify-between" asChild>
                 <Link to="/audit-logs">
-                  View activity log
+                  View more
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </Button>

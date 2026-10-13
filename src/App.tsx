@@ -87,6 +87,7 @@ const ParentsPage = lazyPage(() => import('@/views/fees-parents-page'), 'Parents
 const ParentDetailPage = lazyPage(() => import('@/views/fees-parents-page'), 'ParentDetailPage')
 const ReportsPage = lazyPage(() => import('@/views/reports-page'), 'ReportsPage')
 const AnnouncementsPage = lazyPage(() => import('@/views/ops-pages'), 'AnnouncementsPage')
+const TimetablePage = lazyPage(() => import('@/views/timetable-page'), 'TimetablePage')
 const AuditLogsPage = lazyPage(() => import('@/views/audit-logs-page'), 'AuditLogsPage')
 const InventoryPage = lazyPage(() => import('@/views/inventory-page'), 'InventoryPage')
 const LibraryPage = lazyPage(() => import('@/views/ops-pages'), 'LibraryPage')
@@ -216,6 +217,7 @@ export default function App() {
                 <Route path="/parents/:id" element={<ParentDetailPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
                 <Route path="/announcements" element={<AnnouncementsPage />} />
+                <Route path="/timetable" element={<TimetablePage />} />
                 <Route path="/library" element={<LibraryPage />} />
                 <Route path="/inventory" element={<InventoryPage />} />
                 <Route path="/transport" element={<TransportPage />} />
