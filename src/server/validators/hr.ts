@@ -11,7 +11,7 @@ export const periodSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Use YYY
 export const hrStaffSchema = z.object({
   fullName: text(160).min(2, 'Full name is required'),
   nationalId: text(40).min(3, 'National ID is required'),
-  gender: z.enum(['MALE', 'FEMALE']),
+  gender: z.enum(['MALE', 'FEMALE', 'UNSPECIFIED']),
   dateOfBirth: optionalDate,
   phone: text(40).min(5, 'Phone number is required'),
   email: z.string().trim().email().max(254).or(z.literal('')),
@@ -34,6 +34,7 @@ export const hrStaffSchema = z.object({
     branch: text(120),
   }),
   linkedUid: text(128).optional().or(z.literal('')),
+  directoryStaffId: idSchema.optional().or(z.literal('')),
   notes: text(2000).optional().or(z.literal('')),
 })
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Briefcase, Plus, Trash2, UserCheck, UserMinus, Users } from 'lucide-react'
+import { Briefcase, Download, Plus, Trash2, UserCheck, UserMinus, Users } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { LoadingState } from '@/components/shared/loading-state'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -21,7 +21,13 @@ import { Label } from '@/components/ui/label'
 import { Field } from '@/components/ui/field'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   EMPLOYMENT_TYPES,
   EMPLOYMENT_TYPE_LABEL,
@@ -39,6 +45,7 @@ import { hrService } from '@/services/hr'
 import type {
   HrEmployee,
   HrEmployeeInput,
+  HrDirectoryStaff,
   HrLinkableAccount,
   HrStaffCategory,
   SalaryScaleVersion,
@@ -57,7 +64,7 @@ import {
 const emptyForm = (): HrEmployeeInput => ({
   fullName: '',
   nationalId: '',
-  gender: 'FEMALE',
+  gender: 'UNSPECIFIED',
   dateOfBirth: '',
   phone: '',
   email: '',
@@ -72,6 +79,7 @@ const emptyForm = (): HrEmployeeInput => ({
   salaryScaleId: '',
   bank: { bankName: '', accountNumber: '', branch: '' },
   linkedUid: '',
+  directoryStaffId: '',
   notes: '',
 })
 
@@ -94,8 +102,25 @@ function toForm(e: HrEmployee): HrEmployeeInput {
     salaryScaleId: e.salaryScaleId || '',
     bank: { ...e.bank },
     linkedUid: e.linkedUid || '',
+    directoryStaffId: e.directoryStaffId || '',
     notes: e.notes || '',
   }
+}
+
+function hrCategoryForDirectoryStaff(staff: HrDirectoryStaff): HrStaffCategory {
+  if (staff.category === 'TEACHER') return 'TEACHER'
+  if (staff.category === 'ADMINISTRATION' || staff.category === 'ACCOUNTANT') {
+    return 'ADMINISTRATIVE'
+  }
+  if (
+    staff.category === 'COACH' ||
+    staff.category === 'SPORTS_OFFICIAL' ||
+    staff.category === 'MEDIC' ||
+    staff.category === 'LIBRARIAN'
+  ) {
+    return 'ANCILLARY'
+  }
+  return 'GENERAL_WORKER'
 }
 
 function FormSection({ title, children }: { title: string; children: ReactNode }) {
@@ -124,6 +149,9 @@ export function HrStaffPage() {
   const [editing, setEditing] = useState<HrEmployee | null>(null)
   const [form, setForm] = useState<HrEmployeeInput>(emptyForm())
   const [saving, setSaving] = useState(false)
+  const [directoryOpen, setDirectoryOpen] = useState(false)
+  const [directoryLoading, setDirectoryLoading] = useState(false)
+  const [directoryStaff, setDirectoryStaff] = useState<HrDirectoryStaff[]>([])
 
   async function reload() {
     const [bundle, scaleRows] = await Promise.all([
@@ -184,6 +212,56 @@ export function HrStaffPage() {
     [currentScales, form.category, form.salaryScaleId],
   )
 
+  const importableStaff = useMemo(
+    () =>
+      directoryStaff.filter((staffMember) => {
+        const linkedUid = accounts.find((account) => account.staffId === staffMember.id)?.uid
+        return !employees.some(
+          (employee) =>
+            employee.directoryStaffId === staffMember.id ||
+            (linkedUid && employee.linkedUid === linkedUid) ||
+            (employee.email &&
+              staffMember.email &&
+              employee.email.toLowerCase() === staffMember.email.toLowerCase()),
+        )
+      }),
+    [accounts, directoryStaff, employees],
+  )
+
+  async function openDirectoryImport() {
+    setDirectoryOpen(true)
+    setDirectoryLoading(true)
+    try {
+      setDirectoryStaff(await hrService.listDirectoryStaff())
+    } catch (err) {
+      notify.error(errorText(err, 'Could not load Teachers & Staff'))
+      setDirectoryOpen(false)
+    } finally {
+      setDirectoryLoading(false)
+    }
+  }
+
+  function startDirectoryImport(staffMember: HrDirectoryStaff) {
+    const linkedUid = accounts.find((account) => account.staffId === staffMember.id)?.uid
+    setEditing(null)
+    setForm({
+      ...emptyForm(),
+      fullName: `${staffMember.firstName} ${staffMember.lastName}`.trim(),
+      phone: staffMember.phone === '—' ? '' : staffMember.phone,
+      email: staffMember.email || '',
+      position: staffMember.title || 'Staff member',
+      department: staffMember.department || '',
+      category: hrCategoryForDirectoryStaff(staffMember),
+      dateEmployed: staffMember.hireDate || '',
+      status: staffMember.status === 'ACTIVE' ? 'ACTIVE' : 'SUSPENDED',
+      linkedUid: linkedUid || '',
+      directoryStaffId: staffMember.id,
+      notes: `Imported from Teachers & Staff (${staffMember.employeeNumber}). Verify personal details before saving.`,
+    })
+    setDirectoryOpen(false)
+    setOpen(true)
+  }
+
   function openCreate() {
     setEditing(null)
     setForm(emptyForm())
@@ -205,6 +283,9 @@ export function HrStaffPage() {
     if (form.phone.trim().length < 5) return notify.error('Phone number is required')
     if (form.position.trim().length < 2) return notify.error('Position is required')
     if (!form.dateEmployed) return notify.error('Date employed is required')
+    if (form.directoryStaffId && !form.salaryScaleId) {
+      return notify.error('Assign a salary scale', 'Choose an active salary scale before importing this employee for payroll.')
+    }
     setSaving(true)
     try {
       if (editing) {
@@ -304,7 +385,7 @@ export function HrStaffPage() {
               e.employeeNumber,
               e.fullName,
               e.nationalId,
-              e.gender === 'MALE' ? 'Male' : 'Female',
+              e.gender === 'MALE' ? 'Male' : e.gender === 'FEMALE' ? 'Female' : 'Not specified',
               e.dateOfBirth,
               e.phone,
               e.email,
@@ -348,14 +429,65 @@ export function HrStaffPage() {
           <div className="flex flex-wrap gap-2">
             <ExportButtons onPdf={exportPdf} onExcel={exportExcel} disabled={!filtered.length} />
             {canManage ? (
-              <Button type="button" onClick={openCreate}>
-                <Plus className="h-4 w-4" />
-                Add employee
-              </Button>
+              <>
+                <Button type="button" variant="outline" onClick={() => void openDirectoryImport()}>
+                  <Download className="h-4 w-4" />
+                  Import from Teachers &amp; Staff
+                </Button>
+                <Button type="button" onClick={openCreate}>
+                  <Plus className="h-4 w-4" />
+                  Add employee
+                </Button>
+              </>
             ) : null}
           </div>
         }
       />
+
+      <Dialog open={directoryOpen} onOpenChange={setDirectoryOpen}>
+        <DialogContent className="max-h-[85dvh] sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Import from Teachers &amp; Staff</DialogTitle>
+            <DialogDescription>
+              Select a directory entry to create its payroll profile. Personal details are not copied unless they exist in the directory; verify required information and assign a salary scale before saving.
+            </DialogDescription>
+          </DialogHeader>
+          {directoryLoading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Loading staff directory…</p>
+          ) : importableStaff.length ? (
+            <div className="max-h-[55dvh] space-y-2 overflow-y-auto">
+              {importableStaff.map((staffMember) => (
+                <div
+                  key={staffMember.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {staffMember.firstName} {staffMember.lastName}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {staffMember.employeeNumber} · {staffMember.title} · {staffMember.department}
+                    </p>
+                  </div>
+                  <Button type="button" size="sm" onClick={() => startDirectoryImport(staffMember)}>
+                    Set up payroll
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={Users}
+              title={directoryStaff.length ? 'All directory staff are linked' : 'No directory staff found'}
+              description={
+                directoryStaff.length
+                  ? 'Every Teachers & Staff record already has an HR payroll profile.'
+                  : 'Add staff in Teachers & Staff first, then return here to set up payroll profiles.'
+              }
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="mb-5 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         <StatCard label="Employees on record" value={String(stats.total)} icon={Users} compact />
@@ -536,6 +668,7 @@ export function HrStaffPage() {
                 >
                   <option value="FEMALE">Female</option>
                   <option value="MALE">Male</option>
+                  <option value="UNSPECIFIED">Not specified</option>
                 </Select>
               </Field>
               <Field>

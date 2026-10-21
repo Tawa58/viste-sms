@@ -1,0 +1,80 @@
+<template>
+  <style>
+    @font-face{font-family:"Fraunces";font-weight:100 900;font-style:normal;font-display:block;src:url("assets/fonts/Fraunces-Regular.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:600;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-600.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-700.woff2") format("woff2");}
+    #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: "Manrope", sans-serif; }
+    #d03-bg { position: absolute; inset: 0; background: radial-gradient(1000px 800px at 72% 46%, rgba(19,74,102,0.12), rgba(19,74,102,0) 70%), #f7f9fb; }
+    #d03-text { position: absolute; left: 110px; top: 250px; width: 600px; }
+    #d03-eyebrow { font-weight: 700; font-size: 24px; letter-spacing: 0.18em; color: #0d8a7f; }
+    #d03-head { margin-top: 22px; font-family: "Fraunces", serif; font-weight: 650; font-size: 92px; line-height: 1.04; letter-spacing: -0.02em; color: #0f1b26; }
+    .d03-hl { position: relative; z-index: 0; isolation: isolate; display: inline-block; color: #134a66; }
+    .d03-bar { position: absolute; left: 0; right: 0; bottom: 6px; height: 14px; border-radius: 7px; background: #e8b931; z-index: -1; transform-origin: left center; }
+    #d03-chips { margin-top: 40px; display: flex; flex-wrap: wrap; gap: 14px; }
+    .d03-chip { display: inline-flex; align-items: center; gap: 12px; padding: 14px 24px; border-radius: 100px; background: #ffffff; border: 1.5px solid rgba(19,74,102,0.18); font-weight: 600; font-size: 26px; color: #0f1b26; }
+    .d03-chip i { width: 12px; height: 12px; border-radius: 50%; background: #0d8a7f; }
+    #d03-stage { position: absolute; left: 762px; top: 168px; width: 1088px; height: 650px; perspective: 2200px; }
+    #d03-laptop { position: absolute; inset: 0; transform-origin: 50% 60%; }
+    .d03-bezel { position: absolute; left: 0; top: 0; width: 1088px; height: 626px; padding: 16px; border-radius: 24px; background: #0f1b26; box-shadow: 0 50px 90px rgba(15,27,38,0.28), 0 12px 24px rgba(15,27,38,0.16); }
+    .d03-screen { position: relative; width: 1056px; height: 594px; border-radius: 8px; overflow: hidden; background: #ffffff; }
+    .d03-screen img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+    .d03-base { position: absolute; left: -40px; top: 626px; width: 1168px; height: 24px; border-radius: 0 0 22px 22px; background: linear-gradient(#dfe5ea, #aeb8c1); }
+    .d03-base::after { content: ""; position: absolute; left: 504px; top: 0; width: 160px; height: 9px; border-radius: 0 0 10px 10px; background: #96a1ab; }
+    .d03-ring { position: absolute; border: 4px solid #e8b931; border-radius: 14px; box-shadow: 0 0 0 3000px rgba(10,18,27,0.42); }
+    .d03-label { position: absolute; white-space: nowrap; padding: 10px 20px; border-radius: 100px; background: #134a66; color: #ffffff; font-weight: 700; font-size: 24px; box-shadow: 0 10px 24px rgba(10,18,27,0.3); }
+    #d03-ring1 { left: 17.4%; top: 17.6%; width: 47.8%; height: 9.4%; }
+    #d03-ring1 .d03-label { left: 0; top: calc(100% + 14px); }
+    #d03-ring2 { left: 75.2%; top: 39.6%; width: 11.6%; height: 20.6%; border-radius: 50%; }
+    #d03-ring2 .d03-label { right: -10px; bottom: calc(100% + 16px); }
+  </style>
+
+  <div id="root" data-composition-id="03-dashboard" data-width="1920" data-height="1080" data-duration="6.5">
+    <div id="d03-bg" class="clip" data-start="0" data-duration="6.5" data-track-index="0"></div>
+
+    <div id="d03-text">
+      <div id="d03-eyebrow">MEET VISTE SMS</div>
+      <div id="d03-head">Your school at a <span class="d03-hl">glance<i class="d03-bar"></i></span></div>
+      <div id="d03-chips">
+        <div class="d03-chip" id="d03-chip1"><i></i>Real-time</div>
+        <div class="d03-chip" id="d03-chip2"><i></i>Every role</div>
+      </div>
+    </div>
+
+    <div id="d03-stage">
+      <div id="d03-laptop">
+        <div class="d03-bezel">
+          <div class="d03-screen">
+            <img src="assets/screen-dashboard.png" alt="" />
+            <div class="d03-ring" id="d03-ring1"><div class="d03-label">Live numbers</div></div>
+            <div class="d03-ring" id="d03-ring2"><div class="d03-label">Today's attendance</div></div>
+          </div>
+        </div>
+        <div class="d03-base"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#d03-laptop", { rotationY: 18, x: 220, scale: 0.9, opacity: 0 }, { rotationY: 0, x: 0, scale: 1, opacity: 1, duration: 1.0, ease: "power3.out" }, 0);
+      tl.fromTo("#d03-eyebrow", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" }, 0.15);
+      tl.fromTo("#d03-head", { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 0.3);
+      tl.fromTo(".d03-bar", { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "expo.out" }, 0.9);
+      tl.fromTo("#d03-laptop", { scale: 1 }, { scale: 1.045, duration: 5.0, ease: "none", immediateRender: false }, 1.0);
+
+      tl.fromTo("#d03-ring1", { opacity: 0, scale: 1.12 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }, 1.3);
+      tl.fromTo("#d03-ring1 .d03-label", { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 1.55);
+      tl.to("#d03-ring1", { opacity: 0, duration: 0.35, ease: "power1.in" }, 3.1);
+
+      tl.fromTo("#d03-ring2", { opacity: 0, scale: 1.3 }, { opacity: 1, scale: 1, duration: 0.55, ease: "power3.out" }, 3.25);
+      tl.fromTo("#d03-ring2 .d03-label", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 3.5);
+
+      tl.fromTo("#d03-chip1", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.45, ease: "back.out(1.6)" }, 3.7);
+      tl.fromTo("#d03-chip2", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.45, ease: "back.out(1.6)" }, 4.15);
+
+      window.__timelines["03-dashboard"] = tl;
+    })();
+  </script>
+</template>

@@ -1,0 +1,60 @@
+<template>
+  <style>
+    @font-face{font-family:"Fraunces";font-weight:100 900;font-style:normal;font-display:block;src:url("assets/fonts/Fraunces-Regular.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:600;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-600.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-700.woff2") format("woff2");}
+    #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: "Manrope", sans-serif; }
+    #h01-bg { position: absolute; inset: 0; background:
+      radial-gradient(1100px 700px at 50% 38%, rgba(19,74,102,0.10), rgba(19,74,102,0) 70%),
+      radial-gradient(rgba(19,74,102,0.10) 1.6px, transparent 1.8px) 0 0 / 34px 34px,
+      #f7f9fb; }
+    #h01-crest { position: absolute; left: 810px; top: 250px; width: 300px; height: 300px; }
+    #h01-disc { position: absolute; inset: 0; border-radius: 50%; background: #ffffff; box-shadow: 0 30px 70px rgba(15,27,38,0.14); }
+    #h01-logo { position: absolute; left: 30px; top: 30px; width: 240px; height: 240px; object-fit: contain; }
+    #h01-ring { position: absolute; left: -22px; top: -22px; width: 344px; height: 344px; }
+    #h01-ring circle { fill: none; stroke: #0d8a7f; stroke-width: 6; stroke-linecap: round; }
+    #h01-eyebrow { position: absolute; left: 0; right: 0; top: 488px; text-align: center; font-weight: 700; font-size: 24px; letter-spacing: 0.22em; color: #0d8a7f; }
+    #h01-title { position: absolute; left: 0; right: 0; top: 540px; text-align: center; font-family: "Fraunces", serif; font-weight: 650; font-size: 112px; line-height: 1.08; letter-spacing: -0.02em; color: #0f1b26; }
+    #h01-title .h01-w { display: inline-block; }
+    #h01-line2 { color: #134a66; position: relative; z-index: 0; isolation: isolate; display: inline-block; }
+    #h01-bar { position: absolute; left: 0; right: 0; bottom: 4px; height: 12px; border-radius: 6px; background: #e8b931; z-index: -1; transform-origin: left center; }
+  </style>
+
+  <div id="root" data-composition-id="01-hook" data-width="1920" data-height="1080" data-duration="4.6">
+    <div id="h01-bg" class="clip" data-start="0" data-duration="4.6" data-track-index="0"></div>
+
+    <div id="h01-crest">
+      <div id="h01-disc"></div>
+      <img id="h01-logo" src="assets/logo.png" alt="" />
+      <svg id="h01-ring" viewBox="0 0 344 344"><circle cx="172" cy="172" r="166" /></svg>
+    </div>
+
+    <div id="h01-eyebrow">VISTE SCHOOL MANAGEMENT SYSTEM</div>
+    <div id="h01-title">
+      <span class="h01-w">One</span> <span class="h01-w">app.</span><br />
+      <span id="h01-line2" class="h01-w"><span class="h01-w">Your</span> <span class="h01-w">whole</span> <span class="h01-w">school.</span><i id="h01-bar"></i></span>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const C = 2 * Math.PI * 166;
+      const words = document.querySelectorAll("#h01-title > .h01-w");
+      const line2Words = document.querySelectorAll("#h01-line2 .h01-w");
+
+      tl.fromTo("#h01-crest", { scale: 0.6, opacity: 0, y: 140 }, { scale: 1, opacity: 1, y: 140, duration: 0.8, ease: "back.out(1.6)" }, 0.05);
+      tl.fromTo("#h01-ring circle", { strokeDasharray: C, strokeDashoffset: C }, { strokeDashoffset: 0, duration: 1.2, ease: "power2.inOut" }, 0.2);
+      tl.fromTo("#h01-ring", { rotation: -90 }, { rotation: 30, duration: 4, ease: "none" }, 0);
+
+      tl.to("#h01-crest", { y: -110, scale: 0.78, duration: 0.8, ease: "power3.inOut" }, 1.35);
+      tl.fromTo(words, { y: 70, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, stagger: 0.18, ease: "power3.out" }, 1.55);
+      tl.fromTo(line2Words, { y: 70, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, stagger: 0.14, ease: "power3.out" }, 2.25);
+      tl.fromTo("#h01-bar", { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "expo.out" }, 2.85);
+      tl.fromTo("#h01-eyebrow", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: "power2.out" }, 2.9);
+      tl.fromTo("#h01-title", { scale: 1 }, { scale: 1.03, duration: 2.4, ease: "none" }, 1.6);
+
+      window.__timelines["01-hook"] = tl;
+    })();
+  </script>
+</template>

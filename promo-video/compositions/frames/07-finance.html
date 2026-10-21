@@ -1,0 +1,86 @@
+<template>
+  <style>
+    @font-face{font-family:"Fraunces";font-weight:100 900;font-style:normal;font-display:block;src:url("assets/fonts/Fraunces-Regular.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:600;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-600.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-700.woff2") format("woff2");}
+    #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: "Manrope", sans-serif; }
+    #n07-bg { position: absolute; inset: 0; background: radial-gradient(1000px 800px at 72% 46%, rgba(13,138,127,0.13), rgba(13,138,127,0) 70%), #f7f9fb; }
+    #n07-text { position: absolute; left: 110px; top: 210px; width: 600px; }
+    #n07-eyebrow { font-weight: 700; font-size: 24px; letter-spacing: 0.18em; color: #0d8a7f; }
+    #n07-head { margin-top: 22px; font-family: "Fraunces", serif; font-weight: 650; font-size: 88px; line-height: 1.04; letter-spacing: -0.02em; color: #0f1b26; }
+    .n07-hl { position: relative; z-index: 0; isolation: isolate; display: inline-block; color: #134a66; }
+    .n07-bar { position: absolute; left: 0; right: 0; bottom: 6px; height: 14px; border-radius: 7px; background: #e8b931; z-index: -1; transform-origin: left center; }
+    #n07-stat { margin-top: 36px; }
+    #n07-num { font-family: "Fraunces", serif; font-weight: 700; font-size: 112px; line-height: 1; color: #0d8a7f; letter-spacing: -0.01em; }
+    #n07-cap { margin-top: 8px; font-weight: 600; font-size: 26px; color: #52606d; }
+    #n07-chip { margin-top: 30px; display: inline-flex; align-items: center; gap: 12px; padding: 14px 24px; border-radius: 100px; background: #ffffff; border: 1.5px solid rgba(19,74,102,0.18); font-weight: 600; font-size: 26px; color: #0f1b26; }
+    #n07-chip i { width: 12px; height: 12px; border-radius: 50%; background: #0d8a7f; }
+    #n07-stage { position: absolute; left: 762px; top: 168px; width: 1088px; height: 650px; perspective: 2200px; }
+    #n07-laptop { position: absolute; inset: 0; transform-origin: 40% 50%; }
+    .n07-bezel { position: absolute; left: 0; top: 0; width: 1088px; height: 626px; padding: 16px; border-radius: 24px; background: #0f1b26; box-shadow: 0 50px 90px rgba(15,27,38,0.28), 0 12px 24px rgba(15,27,38,0.16); }
+    .n07-screen { position: relative; width: 1056px; height: 594px; border-radius: 8px; overflow: hidden; background: #ffffff; }
+    .n07-screen img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+    .n07-base { position: absolute; left: -40px; top: 626px; width: 1168px; height: 24px; border-radius: 0 0 22px 22px; background: linear-gradient(#dfe5ea, #aeb8c1); }
+    .n07-base::after { content: ""; position: absolute; left: 504px; top: 0; width: 160px; height: 9px; border-radius: 0 0 10px 10px; background: #96a1ab; }
+    .n07-ring { position: absolute; border: 4px solid #e8b931; border-radius: 14px; box-shadow: 0 0 0 3000px rgba(10,18,27,0.42); }
+    .n07-label { position: absolute; white-space: nowrap; padding: 10px 20px; border-radius: 100px; background: #134a66; color: #ffffff; font-weight: 700; font-size: 24px; box-shadow: 0 10px 24px rgba(10,18,27,0.3); }
+    #n07-ring1 { left: 17.8%; top: 20.4%; width: 75.6%; height: 9.4%; }
+    #n07-ring1 .n07-label { left: 0; top: calc(100% + 14px); }
+    #n07-ring2 { left: 17.8%; top: 40.4%; width: 38.4%; height: 31.6%; }
+    #n07-ring2 .n07-label { left: calc(100% + 16px); top: 40%; }
+  </style>
+
+  <div id="root" data-composition-id="07-finance" data-width="1920" data-height="1080" data-duration="6.6">
+    <div id="n07-bg" class="clip" data-start="0" data-duration="6.6" data-track-index="0"></div>
+
+    <div id="n07-text">
+      <div id="n07-eyebrow">FINANCE</div>
+      <div id="n07-head">Every dollar, <span class="n07-hl">tracked<i class="n07-bar"></i></span></div>
+      <div id="n07-stat">
+        <div id="n07-num">$0</div>
+        <div id="n07-cap">revenue this year, live</div>
+      </div>
+      <div id="n07-chip"><i></i>PDF &amp; Excel reports</div>
+    </div>
+
+    <div id="n07-stage">
+      <div id="n07-laptop">
+        <div class="n07-bezel">
+          <div class="n07-screen">
+            <img src="assets/screen-finance.png" alt="" />
+            <div class="n07-ring" id="n07-ring1"><div class="n07-label">Revenue · expenses · salaries</div></div>
+            <div class="n07-ring" id="n07-ring2"><div class="n07-label">Month by month</div></div>
+          </div>
+        </div>
+        <div class="n07-base"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const numEl = document.getElementById("n07-num");
+      const counter = { v: 0 };
+      const fmt = (v) => "$" + Math.round(v).toLocaleString("en-US");
+
+      tl.fromTo("#n07-laptop", { rotationY: 18, x: 220, scale: 0.9, opacity: 0 }, { rotationY: 0, x: 0, scale: 1, opacity: 1, duration: 1.0, ease: "power3.out" }, 0);
+      tl.fromTo("#n07-eyebrow", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" }, 0.15);
+      tl.fromTo("#n07-head", { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 0.3);
+      tl.fromTo(".n07-bar", { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "expo.out" }, 0.9);
+      tl.fromTo("#n07-laptop", { scale: 1 }, { scale: 1.045, duration: 5.0, ease: "none", immediateRender: false }, 1.0);
+
+      tl.fromTo("#n07-ring1", { opacity: 0, scale: 1.08 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }, 1.2);
+      tl.fromTo("#n07-ring1 .n07-label", { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 1.45);
+      tl.fromTo("#n07-stat", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 1.35);
+      tl.fromTo(counter, { v: 0 }, { v: 52670, duration: 1.6, ease: "power2.out", onUpdate: () => { numEl.textContent = fmt(counter.v); } }, 1.45);
+      tl.to("#n07-ring1", { opacity: 0, duration: 0.35, ease: "power1.in" }, 3.3);
+
+      tl.fromTo("#n07-ring2", { opacity: 0, scale: 1.1 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }, 3.45);
+      tl.fromTo("#n07-ring2 .n07-label", { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" }, 3.7);
+      tl.fromTo("#n07-chip", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.45, ease: "back.out(1.6)" }, 4.0);
+
+      window.__timelines["07-finance"] = tl;
+    })();
+  </script>
+</template>

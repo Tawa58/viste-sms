@@ -27,7 +27,7 @@ vi.mock('@/server/services/staff-service', () => ({
   assertStaffAccountActive,
 }))
 
-import { verifyBearerToken } from '@/server/auth/session'
+import { verifyBearerToken, isBackendUnavailable } from '@/server/auth/session'
 
 describe('verifyBearerToken', () => {
   beforeEach(() => {
@@ -145,5 +145,48 @@ describe('verifyBearerToken', () => {
     expect(session.profile.role).toBe('TEACHER')
     expect(session.permissions).toContain('attendance.read')
     expect(session.permissions).not.toContain('fees.read')
+  })
+
+  it('reports service unavailable, not unauthorized, when Firestore is over quota', async () => {
+    isAdminConfigured.mockReturnValue(true)
+    getAdminAuth.mockReturnValue({
+      verifyIdToken: vi.fn().mockResolvedValue({
+        // Distinct uid: verifyBearerToken memoises sessions per uid for 20s.
+        uid: 'quota-user',
+        email: 'admin@example.test',
+      }),
+    })
+    // firebase-admin surfaces gRPC status 8 as a numeric code.
+    getAdminDb.mockReturnValue({
+      collection: vi.fn(() => ({
+        doc: vi.fn(() => ({
+          get: vi.fn().mockRejectedValue({ code: 8, message: '8 RESOURCE_EXHAUSTED: Quota exceeded.' }),
+        })),
+      })),
+    })
+    const request = new Request('https://example.test/api/v1/auth/me', {
+      headers: { Authorization: 'Bearer valid-token' },
+    })
+
+    await expect(verifyBearerToken(request)).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'SERVICE_UNAVAILABLE',
+    })
+  })
+})
+
+describe('isBackendUnavailable', () => {
+  it('recognises the numeric and string quota codes', () => {
+    expect(isBackendUnavailable({ code: 8 })).toBe(true)
+    expect(isBackendUnavailable({ code: 'RESOURCE_EXHAUSTED' })).toBe(true)
+    expect(isBackendUnavailable({ code: 'UNAVAILABLE' })).toBe(true)
+    expect(isBackendUnavailable({ message: '8 RESOURCE_EXHAUSTED: Quota exceeded.' })).toBe(true)
+  })
+
+  it('does not treat credential or application errors as outages', () => {
+    expect(isBackendUnavailable({ code: 'auth/invalid-credential' })).toBe(false)
+    expect(isBackendUnavailable({ statusCode: 403 })).toBe(false)
+    expect(isBackendUnavailable(new Error('boom'))).toBe(false)
+    expect(isBackendUnavailable(null)).toBe(false)
   })
 })

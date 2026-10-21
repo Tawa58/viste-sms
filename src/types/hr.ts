@@ -3,7 +3,7 @@
 export type HrStaffCategory = 'TEACHER' | 'ANCILLARY' | 'ADMINISTRATIVE' | 'GENERAL_WORKER'
 export type HrEmploymentType = 'PERMANENT' | 'CONTRACT' | 'PART_TIME' | 'TEMPORARY'
 export type HrStaffStatus = 'ACTIVE' | 'ON_LEAVE' | 'SUSPENDED' | 'RESIGNED'
-export type HrGender = 'MALE' | 'FEMALE'
+export type HrGender = 'MALE' | 'FEMALE' | 'UNSPECIFIED'
 
 export interface HrEmergencyContact {
   name: string
@@ -42,6 +42,8 @@ export interface HrEmployee {
   /** Console login whose daily check-ins drive attendance deductions. */
   linkedUid?: string
   linkedName?: string
+  /** Teachers & Staff directory record imported into the HR register. */
+  directoryStaffId?: string
   notes?: string
   createdAt: string
   updatedAt: string
@@ -58,7 +60,22 @@ export interface HrLinkableAccount {
   uid: string
   name: string
   role: string
+  staffId?: string
   employeeNumber?: string
+}
+
+export interface HrDirectoryStaff {
+  id: string
+  employeeNumber: string
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  department: string
+  title: string
+  category?: import('@/types').StaffCategory
+  status: 'ACTIVE' | 'INACTIVE'
+  hireDate: string
 }
 
 export interface HrStaffBundle {

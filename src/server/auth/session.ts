@@ -74,6 +74,24 @@ function sanitizeStaffRole(role: unknown): StaffAccountRole | null {
     : null
 }
 
+/**
+ * Firestore refuses reads/writes when the project's quota is exhausted (Spark
+ * free-tier cap, or billing disabled). firebase-admin surfaces gRPC status 8
+ * as a numeric `code`, so match both that and the string code.
+ *
+ * These are transient infrastructure faults, not an authentication failure —
+ * callers must not present them to the user as "Login failed".
+ */
+export function isBackendUnavailable(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: unknown; message?: unknown }
+  if (e.code === 8) return true
+  if (typeof e.code === 'string') {
+    if (['RESOURCE_EXHAUSTED', 'UNAVAILABLE', 'DEADLINE_EXCEEDED'].includes(e.code)) return true
+  }
+  return typeof e.message === 'string' && /RESOURCE_EXHAUSTED|Quota exceeded/i.test(e.message)
+}
+
 export function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(obj)) {
@@ -205,7 +223,20 @@ export async function verifyBearerToken(
   const { remember } = await import('@/server/http/memo')
   return remember(cacheKey, 20_000, async () => {
     onStage?.('USER PROFILE LOOKUP')
-    let profile = await loadOrCreateProfile(decoded.uid, email, decoded.name)
+    let profile: AuthUser
+    try {
+      profile = await loadOrCreateProfile(decoded.uid, email, decoded.name)
+    } catch (err) {
+      // Firestore quota exhaustion is an outage, not bad credentials. Report it
+      // as 503 so the client can say "try again" instead of "wrong password".
+      if (isBackendUnavailable(err)) {
+        console.error('[auth] Firestore unavailable during profile load', err)
+        throw serviceUnavailable(
+          'The school database is temporarily unavailable. Please try again in a moment.',
+        )
+      }
+      throw err
+    }
     onStage?.('USER PROFILE RESOLVED')
     let staffOverrides: PermissionOverrides | null = null
     if (profile.staffId) {

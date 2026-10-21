@@ -1,0 +1,17 @@
+{
+  "name": "promo-video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.8.103 preview",
+    "check": "npx --yes hyperframes@0.8.103 check",
+    "render": "npx --yes hyperframes@0.8.103 render",
+    "publish": "npx --yes hyperframes@0.8.103 publish"
+  },
+  "devDependencies": {
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource/manrope": "^5.3.0",
+    "ffmpeg-static": "^5.3.0"
+  }
+}

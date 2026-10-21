@@ -496,6 +496,7 @@ export const mockHrService: HrService = {
         accounts: [{ uid: 'demo-user', name: 'Demo teacher', role: 'TEACHER' }],
       }),
     ),
+  listDirectoryStaff: async () => mockRequest([]),
   createStaff: async (input) => {
     checkEmployeeInput(input)
     const stamp = now()

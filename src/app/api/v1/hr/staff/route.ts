@@ -2,11 +2,18 @@ import { requireSession } from '@/server/auth/session'
 import { badRequest } from '@/server/errors'
 import { jsonOk, withApiHandler } from '@/server/http/handler'
 import { rateLimit } from '@/server/http/rate-limit'
-import { createHrStaff, listHrStaff } from '@/server/services/hr-service'
+import {
+  createHrStaff,
+  listHrDirectoryStaff,
+  listHrStaff,
+} from '@/server/services/hr-service'
 import { hrStaffSchema } from '@/server/validators/hr'
 
 export const GET = withApiHandler(async (request) => {
   const session = await requireSession(request)
+  if (new URL(request.url).searchParams.get('directory') === '1') {
+    return jsonOk(await listHrDirectoryStaff(session))
+  }
   return jsonOk(await listHrStaff(session))
 })
 

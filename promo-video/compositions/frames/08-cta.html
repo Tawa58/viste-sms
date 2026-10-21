@@ -1,0 +1,93 @@
+<template>
+  <style>
+    @font-face{font-family:"Fraunces";font-weight:100 900;font-style:normal;font-display:block;src:url("assets/fonts/Fraunces-Regular.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:600;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-600.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-700.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:800;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-800.woff2") format("woff2");}
+    #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: "Manrope", sans-serif; }
+    #c08-bg { position: absolute; inset: 0; background:
+      radial-gradient(1200px 760px at 50% 30%, rgba(19,74,102,0.12), rgba(19,74,102,0) 70%),
+      radial-gradient(rgba(19,74,102,0.10) 1.6px, transparent 1.8px) 0 0 / 34px 34px,
+      #f7f9fb; }
+    #c08-rings { position: absolute; left: 560px; top: -60px; width: 800px; height: 800px; }
+    #c08-rings circle { fill: none; stroke: rgba(13,138,127,0.18); stroke-width: 2; }
+    #c08-devices { position: absolute; left: 0; top: 0; width: 1920px; height: 900px; transform-origin: 960px 900px; }
+    .c08-dev { position: absolute; }
+    #c08-phone { left: 260px; top: 240px; width: 290px; height: 590px; padding: 12px; border-radius: 46px; background: #0f1b26; box-shadow: 0 40px 80px rgba(15,27,38,0.28); }
+    #c08-phone .c08-scr { width: 266px; height: 566px; border-radius: 36px; overflow: hidden; position: relative; background: #f7f9fb; }
+    #c08-phone img { position: absolute; left: 50%; top: 0; height: 100%; width: auto; margin-left: -503px; }
+    #c08-phone .c08-notch { position: absolute; left: 50%; top: 20px; width: 90px; height: 22px; margin-left: -45px; border-radius: 11px; background: #0f1b26; }
+    #c08-laptop { left: 560px; top: 290px; width: 800px; height: 480px; }
+    #c08-laptop .c08-bez { position: absolute; left: 0; top: 0; width: 800px; height: 460px; padding: 12px; border-radius: 20px; background: #0f1b26; box-shadow: 0 46px 90px rgba(15,27,38,0.3); }
+    #c08-laptop .c08-scr { width: 776px; height: 436px; border-radius: 6px; overflow: hidden; }
+    #c08-laptop img, #c08-win img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+    #c08-laptop .c08-base { position: absolute; left: -36px; top: 460px; width: 872px; height: 20px; border-radius: 0 0 18px 18px; background: linear-gradient(#dfe5ea, #aeb8c1); }
+    #c08-win { left: 1320px; top: 320px; width: 560px; height: 359px; border-radius: 12px; overflow: hidden; background: #ffffff; box-shadow: 0 40px 80px rgba(15,27,38,0.26); border: 1px solid rgba(15,27,38,0.12); }
+    #c08-win .c08-tb { height: 44px; background: #134a66; display: flex; align-items: center; padding: 0 16px; color: #ffffff; font-weight: 700; font-size: 18px; gap: 10px; }
+    #c08-win .c08-tb img { width: 24px; height: 24px; border-radius: 4px; background: #fff; }
+    #c08-win .c08-ctl { margin-left: auto; display: flex; gap: 22px; align-items: center; }
+    #c08-win .c08-ctl i { display: block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.85); }
+    #c08-win .c08-ctl i:first-child { height: 0; border-width: 1px; }
+    #c08-win .c08-scr { height: 315px; }
+    .c08-tag { position: absolute; top: 852px; font-weight: 800; font-size: 30px; letter-spacing: 0.06em; color: #134a66; text-align: center; width: 300px; margin-left: -150px; }
+    #c08-brand { position: absolute; left: 0; right: 0; top: 56px; display: flex; flex-direction: column; align-items: center; }
+    #c08-crest { width: 132px; height: 132px; border-radius: 50%; background: #ffffff; box-shadow: 0 18px 40px rgba(15,27,38,0.14); display: flex; align-items: center; justify-content: center; }
+    #c08-crest img { width: 108px; height: 108px; object-fit: contain; }
+    #c08-word { margin-top: 14px; font-family: "Fraunces", serif; font-weight: 700; font-size: 84px; line-height: 1; letter-spacing: -0.02em; color: #0f1b26; }
+    #c08-word span { color: #0d8a7f; }
+    #c08-line { margin-top: 14px; font-weight: 700; font-size: 34px; color: #52606d; }
+    #c08-cta { margin-top: 22px; padding: 18px 40px; border-radius: 100px; background: #134a66; color: #ffffff; font-weight: 800; font-size: 30px; letter-spacing: 0.01em; white-space: nowrap; box-shadow: 0 18px 40px rgba(19,74,102,0.35); }
+    #c08-cta span { font-weight: 600; color: rgba(255,255,255,0.72); }
+  </style>
+
+  <div id="root" data-composition-id="08-cta" data-width="1920" data-height="1080">
+    <div id="c08-bg" class="clip" data-start="0" data-duration="6.5" data-track-index="0"></div>
+    <svg id="c08-rings" viewBox="0 0 800 800"><circle cx="400" cy="400" r="180" /><circle cx="400" cy="400" r="270" /><circle cx="400" cy="400" r="360" /></svg>
+
+    <div id="c08-devices">
+      <div class="c08-dev" id="c08-phone"><div class="c08-scr"><img src="assets/screen-splash.png" alt="" /><div class="c08-notch"></div></div></div>
+      <div class="c08-dev" id="c08-win">
+        <div class="c08-tb"><img src="assets/logo.png" alt="" />Viste SMS<div class="c08-ctl"><i></i><i></i><i></i></div></div>
+        <div class="c08-scr"><img src="assets/screen-fees.png" alt="" /></div>
+      </div>
+      <div class="c08-dev" id="c08-laptop">
+        <div class="c08-bez"><div class="c08-scr"><img src="assets/screen-dashboard.png" alt="" /></div></div>
+        <div class="c08-base"></div>
+      </div>
+      <div class="c08-tag" id="c08-t1" style="left:405px">ANDROID</div>
+      <div class="c08-tag" id="c08-t2" style="left:960px">WEB</div>
+      <div class="c08-tag" id="c08-t3" style="left:1600px">WINDOWS</div>
+    </div>
+
+    <div id="c08-brand">
+      <div id="c08-crest"><img src="assets/logo.png" alt="" /></div>
+      <div id="c08-word">Viste <span>SMS</span></div>
+      <div id="c08-line">Run your school smarter.</div>
+      <div id="c08-cta"><span>Developed by</span> ADIGX — Antonio Digital Innovation Group X</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#c08-laptop", { y: 260, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 0.8, ease: "power3.out" }, 0.05);
+      tl.fromTo("#c08-phone", { y: 300, opacity: 0, rotation: -6 }, { y: 0, opacity: 1, rotation: -4, duration: 0.8, ease: "power3.out" }, 0.4);
+      tl.fromTo("#c08-win", { y: 300, opacity: 0, rotation: 6 }, { y: 0, opacity: 1, rotation: 3, duration: 0.8, ease: "power3.out" }, 0.75);
+      tl.fromTo("#c08-t2", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 0.7);
+      tl.fromTo("#c08-t1", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 1.05);
+      tl.fromTo("#c08-t3", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 1.4);
+      tl.fromTo("#c08-rings", { scale: 0.85, opacity: 0, rotation: 0 }, { scale: 1, opacity: 1, rotation: 20, duration: 6.4, ease: "power1.out" }, 0.1);
+
+      tl.fromTo("#c08-devices", { scale: 1, y: 0 }, { scale: 0.6, y: 20, duration: 1.0, ease: "power3.inOut" }, 2.4);
+      tl.fromTo("#c08-crest", { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: "back.out(1.8)" }, 2.75);
+      tl.fromTo("#c08-word", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 3.0);
+
+      tl.fromTo("#c08-line", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "power3.out" }, 4.2);
+      tl.fromTo("#c08-cta", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: "back.out(2)" }, 4.6);
+      tl.fromTo("#c08-cta", { boxShadow: "0 18px 40px rgba(19,74,102,0.35)" }, { boxShadow: "0 22px 60px rgba(13,138,127,0.55)", duration: 1.2, ease: "sine.inOut", immediateRender: false }, 5.2);
+
+      window.__timelines["08-cta"] = tl;
+    })();
+  </script>
+</template>

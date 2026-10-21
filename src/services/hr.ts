@@ -10,6 +10,7 @@ import type {
   FinanceSummary,
   HrEmployee,
   HrEmployeeInput,
+  HrDirectoryStaff,
   HrStaffBundle,
   PayrollDeduction,
   PayrollRun,
@@ -31,6 +32,7 @@ export type HrService = {
   /** Letterhead details for PDF exports. */
   getSchool(): Promise<PayrollSchoolInfo>
   listStaff(): Promise<HrStaffBundle>
+  listDirectoryStaff(): Promise<HrDirectoryStaff[]>
   createStaff(input: HrEmployeeInput): Promise<HrEmployee>
   updateStaff(id: string, input: HrEmployeeInput): Promise<HrEmployee>
   deleteStaff(id: string): Promise<void>
@@ -85,6 +87,7 @@ const rangeQuery = (r: DateRange) => `?from=${enc(r.from)}&to=${enc(r.to)}`
 const apiHrService: HrService = {
   getSchool: () => apiFetch('/api/v1/hr/school', { cacheTtlMs: 5 * 60_000 }),
   listStaff: () => get('/api/v1/hr/staff'),
+  listDirectoryStaff: () => get('/api/v1/hr/staff?directory=1'),
   createStaff: (input) => send('/api/v1/hr/staff', 'POST', input),
   updateStaff: (id, input) => send(`/api/v1/hr/staff/${enc(id)}`, 'PATCH', input),
   deleteStaff: (id) => remove(`/api/v1/hr/staff/${enc(id)}`),

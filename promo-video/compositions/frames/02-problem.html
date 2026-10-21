@@ -1,0 +1,59 @@
+<template>
+  <style>
+    @font-face{font-family:"Fraunces";font-weight:100 900;font-style:normal;font-display:block;src:url("assets/fonts/Fraunces-Regular.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:500;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-500.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-700.woff2") format("woff2");}
+    #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: "Manrope", sans-serif; }
+    #p02-bg { position: absolute; inset: 0; background: radial-gradient(1200px 760px at 50% 45%, #ffffff, #eef2f5 75%); }
+    .p02-card { position: absolute; width: 380px; height: 220px; margin-left: -190px; margin-top: -110px; border-radius: 16px; background: #ffffff; border: 1.5px solid rgba(15,27,38,0.10); box-shadow: 0 22px 50px rgba(15,27,38,0.12); padding: 26px 28px; }
+    .p02-label { font-weight: 700; font-size: 30px; color: #0f1b26; letter-spacing: -0.01em; }
+    .p02-tag { display: inline-block; margin-top: 8px; font-weight: 500; font-size: 18px; color: #7b8794; }
+    .p02-lines { margin-top: 20px; }
+    .p02-lines i { display: block; height: 10px; border-radius: 5px; background: #e4e9ee; margin-bottom: 12px; }
+    .p02-lines i:nth-child(2) { width: 82%; }
+    .p02-lines i:nth-child(3) { width: 64%; }
+    .p02-strike { position: absolute; left: 18px; right: 18px; top: 104px; height: 8px; border-radius: 4px; background: #dc2626; transform-origin: left center; }
+    #p02-dim { position: absolute; inset: 0; background: rgba(247,249,251,0.72); }
+    #p02-title { position: absolute; left: 0; right: 0; top: 400px; text-align: center; font-family: "Fraunces", serif; font-weight: 650; font-size: 128px; letter-spacing: -0.02em; color: #0f1b26; line-height: 1; }
+    #p02-sub { position: absolute; left: 0; right: 0; top: 556px; text-align: center; font-weight: 700; font-size: 40px; color: #134a66; }
+    #p02-sub span { color: #dc2626; }
+  </style>
+
+  <div id="root" data-composition-id="02-problem" data-width="1920" data-height="1080" data-duration="5.4">
+    <div id="p02-bg" class="clip" data-start="0" data-duration="5.4" data-track-index="0"></div>
+
+    <div class="p02-card" data-layout-allow-overlap data-layout-allow-occlusion id="p02-c1" style="left:540px;top:290px"><div class="p02-label" data-layout-allow-overlap>Attendance register</div><div class="p02-tag" data-layout-allow-overlap>paper · per class</div><div class="p02-lines"><i></i><i></i><i></i></div><div class="p02-strike"></div></div>
+    <div class="p02-card" data-layout-allow-overlap data-layout-allow-occlusion id="p02-c2" style="left:1390px;top:270px"><div class="p02-label" data-layout-allow-overlap>Receipt book</div><div class="p02-tag" data-layout-allow-overlap>handwritten</div><div class="p02-lines"><i></i><i></i><i></i></div><div class="p02-strike"></div></div>
+    <div class="p02-card" data-layout-allow-overlap data-layout-allow-occlusion id="p02-c3" style="left:420px;top:660px"><div class="p02-label" data-layout-allow-overlap>Marks spreadsheet</div><div class="p02-tag" data-layout-allow-overlap>Excel · v7 final</div><div class="p02-lines"><i></i><i></i><i></i></div><div class="p02-strike"></div></div>
+    <div class="p02-card" data-layout-allow-overlap data-layout-allow-occlusion id="p02-c4" style="left:1500px;top:670px"><div class="p02-label" data-layout-allow-overlap>Payroll file</div><div class="p02-tag" data-layout-allow-overlap>calculator</div><div class="p02-lines"><i></i><i></i><i></i></div><div class="p02-strike"></div></div>
+    <div class="p02-card" data-layout-allow-overlap data-layout-allow-occlusion id="p02-c5" style="left:965px;top:210px"><div class="p02-label" data-layout-allow-overlap>Fee ledger</div><div class="p02-tag" data-layout-allow-overlap>who still owes?</div><div class="p02-lines"><i></i><i></i><i></i></div><div class="p02-strike"></div></div>
+    <div class="p02-card" data-layout-allow-overlap data-layout-allow-occlusion id="p02-c6" style="left:975px;top:760px"><div class="p02-label" data-layout-allow-overlap>WhatsApp groups</div><div class="p02-tag" data-layout-allow-overlap>notices · results</div><div class="p02-lines"><i></i><i></i><i></i></div><div class="p02-strike"></div></div>
+
+    <div id="p02-dim"></div>
+    <div id="p02-title">Too many systems.</div>
+    <div id="p02-sub">Time lost. <span>Money missed.</span></div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const cards = [
+        ["#p02-c1", -8], ["#p02-c2", 7], ["#p02-c5", -3],
+        ["#p02-c3", 5], ["#p02-c4", -6], ["#p02-c6", 4],
+      ];
+      cards.forEach(([sel, rot], i) => {
+        tl.fromTo(sel, { y: -260, opacity: 0, rotation: rot * 3, scale: 1.08 },
+          { y: 0, opacity: 1, rotation: rot, scale: 1, duration: 0.55, ease: "back.out(1.4)" }, 0.1 + i * 0.3);
+      });
+      tl.fromTo(".p02-card", { x: 0 }, { x: (i) => [-14, 12, -6, 10, -12, 8][i], duration: 4.6, ease: "none" }, 0.2);
+
+      tl.fromTo("#p02-c1 .p02-strike, #p02-c2 .p02-strike, #p02-c5 .p02-strike, #p02-c3 .p02-strike, #p02-c4 .p02-strike, #p02-c6 .p02-strike",
+        { scaleX: 0 }, { scaleX: 1, duration: 0.3, stagger: 0.12, ease: "power2.out" }, 2.25);
+
+      tl.fromTo("#p02-dim", { opacity: 0 }, { opacity: 1, duration: 0.5, ease: "power2.out" }, 3.2);
+      tl.fromTo("#p02-title", { scale: 1.5, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: "expo.out" }, 3.35);
+      tl.fromTo("#p02-sub", { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "power3.out" }, 3.9);
+      window.__timelines["02-problem"] = tl;
+    })();
+  </script>
+</template>

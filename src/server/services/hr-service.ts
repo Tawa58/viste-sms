@@ -22,6 +22,7 @@ import type {
 } from '@/server/validators/hr'
 import type {
   HrEmployee,
+  HrDirectoryStaff,
   HrLinkableAccount,
   HrStaffBundle,
   SalaryScaleVersion,
@@ -38,7 +39,7 @@ function empty(value?: string | null) {
 async function listAccounts(): Promise<HrLinkableAccount[]> {
   const snap = await getAdminDb()
     .collection('users')
-    .select('name', 'email', 'role', 'employeeNumber', 'disabled', 'status')
+    .select('name', 'email', 'role', 'employeeNumber', 'staffId', 'disabled', 'status')
     .limit(1000)
     .get()
   return snap.docs
@@ -48,6 +49,7 @@ async function listAccounts(): Promise<HrLinkableAccount[]> {
         email?: string
         role?: UserRole
         employeeNumber?: string
+        staffId?: string
         disabled?: boolean
         status?: string
       }
@@ -58,11 +60,33 @@ async function listAccounts(): Promise<HrLinkableAccount[]> {
         uid: d.id,
         name: u.name || u.email || d.id,
         role: u.role,
+        ...(u.staffId ? { staffId: u.staffId } : {}),
         ...(u.employeeNumber ? { employeeNumber: u.employeeNumber } : {}),
       }
     })
     .filter((a): a is HrLinkableAccount => a !== null)
     .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function listHrDirectoryStaff(session: SessionContext): Promise<HrDirectoryStaff[]> {
+  requirePermission(session, 'hr.manage')
+  const snap = await getAdminDb()
+    .collection('staff')
+    .select(
+      'employeeNumber',
+      'firstName',
+      'lastName',
+      'email',
+      'phone',
+      'department',
+      'title',
+      'category',
+      'status',
+      'hireDate',
+    )
+    .limit(100)
+    .get()
+  return snap.docs.map((doc) => ({ ...(doc.data() as Omit<HrDirectoryStaff, 'id'>), id: doc.id }))
 }
 
 export async function listHrStaff(session: SessionContext): Promise<HrStaffBundle> {
@@ -123,6 +147,7 @@ function fromInput(input: HrStaffInput) {
     salaryScaleId: empty(input.salaryScaleId),
     bank: input.bank,
     linkedUid: empty(input.linkedUid),
+    directoryStaffId: empty(input.directoryStaffId),
     notes: empty(input.notes),
   }
 }
@@ -134,6 +159,14 @@ export async function createHrStaff(
 ): Promise<HrEmployee> {
   requirePermission(session, 'hr.manage')
   const data = fromInput(input)
+  if (data.directoryStaffId) {
+    const existing = await getAdminDb()
+      .collection(HR.staff)
+      .where('directoryStaffId', '==', data.directoryStaffId)
+      .limit(1)
+      .get()
+    if (!existing.empty) throw conflict('This directory employee already has an HR payroll record')
+  }
   await Promise.all([assertUniqueNationalId(data.nationalId), assertAssignableScale(data.salaryScaleId)])
   const id = newId('emp')
   const now = nowIso()

@@ -1,0 +1,81 @@
+<template>
+  <style>
+    @font-face{font-family:"Fraunces";font-weight:100 900;font-style:normal;font-display:block;src:url("assets/fonts/Fraunces-Regular.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:600;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-600.woff2") format("woff2");}
+    @font-face{font-family:"Manrope";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/Manrope-700.woff2") format("woff2");}
+    #root { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; font-family: "Manrope", sans-serif; }
+    #f05-bg { position: absolute; inset: 0; background: radial-gradient(1000px 800px at 72% 46%, rgba(232,185,49,0.14), rgba(232,185,49,0) 70%), #f7f9fb; }
+    #f05-text { position: absolute; left: 110px; top: 240px; width: 600px; }
+    #f05-eyebrow { font-weight: 700; font-size: 24px; letter-spacing: 0.18em; color: #0d8a7f; }
+    #f05-head { margin-top: 22px; font-family: "Fraunces", serif; font-weight: 650; font-size: 104px; line-height: 1.02; letter-spacing: -0.02em; color: #0f1b26; }
+    .f05-hl { position: relative; z-index: 0; isolation: isolate; display: inline-block; color: #134a66; }
+    .f05-bar { position: absolute; left: 0; right: 0; bottom: 8px; height: 16px; border-radius: 8px; background: #e8b931; z-index: -1; transform-origin: left center; }
+    #f05-chips { margin-top: 40px; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+    .f05-chip { display: inline-flex; align-items: center; gap: 12px; padding: 14px 24px; border-radius: 100px; background: #ffffff; border: 1.5px solid rgba(19,74,102,0.18); font-weight: 600; font-size: 26px; color: #0f1b26; }
+    .f05-chip i { width: 12px; height: 12px; border-radius: 50%; background: #0d8a7f; }
+    #f05-stage { position: absolute; left: 762px; top: 168px; width: 1088px; height: 650px; perspective: 2200px; }
+    #f05-laptop { position: absolute; inset: 0; transform-origin: 55% 40%; }
+    .f05-bezel { position: absolute; left: 0; top: 0; width: 1088px; height: 626px; padding: 16px; border-radius: 24px; background: #0f1b26; box-shadow: 0 50px 90px rgba(15,27,38,0.28), 0 12px 24px rgba(15,27,38,0.16); }
+    .f05-screen { position: relative; width: 1056px; height: 594px; border-radius: 8px; overflow: hidden; background: #ffffff; }
+    .f05-screen img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+    .f05-base { position: absolute; left: -40px; top: 626px; width: 1168px; height: 24px; border-radius: 0 0 22px 22px; background: linear-gradient(#dfe5ea, #aeb8c1); }
+    .f05-base::after { content: ""; position: absolute; left: 504px; top: 0; width: 160px; height: 9px; border-radius: 0 0 10px 10px; background: #96a1ab; }
+    .f05-ring { position: absolute; border: 4px solid #e8b931; border-radius: 14px; box-shadow: 0 0 0 3000px rgba(10,18,27,0.42); }
+    .f05-label { position: absolute; white-space: nowrap; padding: 10px 20px; border-radius: 100px; background: #134a66; color: #ffffff; font-weight: 700; font-size: 24px; box-shadow: 0 10px 24px rgba(10,18,27,0.3); }
+    #f05-ring1 { left: 17.8%; top: 29.4%; width: 75.6%; height: 36.6%; }
+    #f05-ring1 .f05-label { left: 0; top: calc(100% + 14px); }
+    #f05-ring2 { left: 17.8%; top: 20.6%; width: 75.6%; height: 8.6%; }
+    #f05-ring2 .f05-label { left: 0; top: calc(100% + 14px); }
+  </style>
+
+  <div id="root" data-composition-id="05-fees" data-width="1920" data-height="1080" data-duration="7">
+    <div id="f05-bg" class="clip" data-start="0" data-duration="7" data-track-index="0"></div>
+
+    <div id="f05-text">
+      <div id="f05-eyebrow">FEES &amp; PAYMENTS</div>
+      <div id="f05-head">Fees, <span class="f05-hl">sorted<i class="f05-bar"></i></span></div>
+      <div id="f05-chips">
+        <div class="f05-chip" id="f05-chip1"><i></i>Termly or monthly plans</div>
+        <div class="f05-chip" id="f05-chip2"><i></i>Receipts &amp; balances</div>
+        <div class="f05-chip" id="f05-chip3"><i></i>EcoCash · Bank · Cash</div>
+      </div>
+    </div>
+
+    <div id="f05-stage">
+      <div id="f05-laptop">
+        <div class="f05-bezel">
+          <div class="f05-screen">
+            <img src="assets/screen-fees.png" alt="" />
+            <div class="f05-ring" id="f05-ring1"><div class="f05-label">ECD → A-Level · Day &amp; Boarder</div></div>
+            <div class="f05-ring" id="f05-ring2"><div class="f05-label">$6,547 collected</div></div>
+          </div>
+        </div>
+        <div class="f05-base"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#f05-laptop", { rotationY: 18, x: 220, scale: 0.9, opacity: 0 }, { rotationY: 0, x: 0, scale: 1, opacity: 1, duration: 1.0, ease: "power3.out" }, 0);
+      tl.fromTo("#f05-eyebrow", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.5, ease: "power2.out" }, 0.15);
+      tl.fromTo("#f05-head", { opacity: 0, y: 50 }, { opacity: 1, y: 0, duration: 0.7, ease: "power3.out" }, 0.3);
+      tl.fromTo(".f05-bar", { scaleX: 0 }, { scaleX: 1, duration: 0.6, ease: "expo.out" }, 0.9);
+      tl.fromTo("#f05-laptop", { scale: 1 }, { scale: 1.05, duration: 5.5, ease: "none", immediateRender: false }, 1.0);
+
+      tl.fromTo("#f05-ring1", { opacity: 0, scale: 1.06 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }, 1.25);
+      tl.fromTo("#f05-ring1 .f05-label", { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 1.5);
+      tl.fromTo("#f05-chip1", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.45, ease: "back.out(1.6)" }, 2.0);
+      tl.fromTo("#f05-chip2", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.45, ease: "back.out(1.6)" }, 2.6);
+      tl.to("#f05-ring1", { opacity: 0, duration: 0.35, ease: "power1.in" }, 3.5);
+
+      tl.fromTo("#f05-ring2", { opacity: 0, scale: 1.1 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }, 3.65);
+      tl.fromTo("#f05-ring2 .f05-label", { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, 3.9);
+      tl.fromTo("#f05-chip3", { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.45, ease: "back.out(1.6)" }, 4.3);
+
+      window.__timelines["05-fees"] = tl;
+    })();
+  </script>
+</template>

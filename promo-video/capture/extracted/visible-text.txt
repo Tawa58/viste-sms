@@ -1,0 +1,15 @@
+Viste SMS — Viste High School Management System
+Your school. Connected. Simplified.
+Manage your school operations, academics, students, attendance, fees and results — all in one place.
+
+Modules (from the app navigation):
+- Dashboard: enrolment, attendance today, fees collected, recent activity
+- Daily check-in: staff check-in and staff attendance tracking
+- People: Students, Teachers & Staff, Parents/Guardians
+- Academics: Classes, Subjects, Sports, Clubs & Activities, Attendance registers, Examinations, Results
+- Finance: Financial dashboard, Fees & Payments (ECD, Primary, Secondary, A-Level fees for day scholars and boarders, termly or monthly plans, receipts), Expenses, Revenue
+- HR & Payroll: staff records, salary scales, payroll runs, deductions, payslips (PDF / Excel)
+- Student portal: students sign in with their student number and portal code to see results by term, month or year, download results sheets, see fees
+- Parents see attendance, results and fee balances
+- Available on the web, as a Windows desktop app and as an Android app
+- Website: viste-sms.vercel.app

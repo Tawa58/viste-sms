@@ -6,7 +6,7 @@ import { authService } from '@/services/api'
 import { USE_MOCK_API } from '@/services/api/client'
 import { getFirebaseAuth } from '@/services/firebase/app'
 import { clearSchoolDataCache, prefetchSchoolData } from '@/services/api/prefetch'
-import { clearAuthTokenCache } from '@/services/api/http-client'
+import { clearAuthTokenCache, isApiClientError } from '@/services/api/http-client'
 import { mockUsers } from '@/mocks/data'
 import type { AuthUser } from '@/types'
 
@@ -42,6 +42,16 @@ function clearSession() {
   sessionStorage.removeItem(STORAGE_KEY)
   localStorage.removeItem(PERMS_KEY)
   sessionStorage.removeItem(PERMS_KEY)
+}
+
+/**
+ * True when the failure came from the server being unable to answer (5xx),
+ * rather than the user's credentials being wrong. On these we must keep the
+ * Firebase session: the password was accepted, and signing out would turn a
+ * temporary outage into a forced re-login.
+ */
+function isInfrastructureFailure(err: unknown): boolean {
+  return isApiClientError(err) && err.status >= 500
 }
 
 function readStoredPermissions(): string[] {
@@ -155,17 +165,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setTimeout(() => prefetchSchoolData(), 300)
           }
         } catch (err) {
-          setUser(null)
-          setPermissions([])
-          clearSession()
-          clearSchoolDataCache()
-          clearAuthTokenCache()
-          if (!USE_MOCK_API) {
-            try {
-              await signOut(getFirebaseAuth())
-            } catch (signOutError) {
-              console.error('[auth] Could not clear Firebase session after login failure', signOutError)
+          // A 5xx means the server couldn't answer, not that the password was
+          // wrong. Keep the session so the user can retry once the backend
+          // recovers instead of being signed out.
+          if (!isInfrastructureFailure(err)) {
+            setUser(null)
+            setPermissions([])
+            clearSession()
+            clearSchoolDataCache()
+            if (!USE_MOCK_API) {
+              try {
+                await signOut(getFirebaseAuth())
+              } catch (signOutError) {
+                console.error(
+                  '[auth] Could not clear Firebase session after login failure',
+                  signOutError,
+                )
+              }
             }
+          } else {
+            console.error('[auth] Login could not be completed — server unavailable', err)
+            clearAuthTokenCache()
           }
           throw err
         }
