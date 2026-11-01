@@ -26,7 +26,14 @@ export const GET = withApiHandler(async (request) => {
   }
   const kind = url.searchParams.get('kind')
   if (kind === 'assessments') return jsonOk(await listAssessmentsService(session))
-  if (kind === 'marks') return jsonOk(await listMarksService(session))
+  if (kind === 'marks') {
+    return jsonOk(
+      await listMarksService(session, {
+        assessmentId: url.searchParams.get('assessmentId') ?? undefined,
+        studentId: url.searchParams.get('forStudentId') ?? undefined,
+      }),
+    )
+  }
   return jsonOk(await listAssessmentsService(session))
 })
 

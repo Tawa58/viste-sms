@@ -1342,7 +1342,12 @@ function GradingScalePanel() {
   const active = scales?.[track]
 
   function updateActive(
-    patch: Partial<{ passMark: number; bands: { grade: string; minPercent: number; maxPercent: number }[] }>,
+    patch: Partial<{
+      passMark: number
+      bands: { grade: string; minPercent: number; maxPercent: number }[]
+      scheme: 'PERCENT_BANDS' | 'UNITS'
+      marksPerUnit: number
+    }>,
   ) {
     if (!scales || !active) return
     setScales({
@@ -1353,10 +1358,18 @@ function GradingScalePanel() {
 
   async function save() {
     if (!active) return
-    const labels = active.bands.map((b) => b.grade.trim().toUpperCase()).filter(Boolean)
-    if (labels.length < 1) {
-      notify.error('Add at least one grade band')
-      return
+    const scheme = active.scheme ?? (track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')
+    if (scheme === 'UNITS') {
+      if (!active.marksPerUnit || active.marksPerUnit < 1) {
+        notify.error('Set how many marks make 1 unit')
+        return
+      }
+    } else {
+      const labels = active.bands.map((b) => b.grade.trim().toUpperCase()).filter(Boolean)
+      if (labels.length < 1) {
+        notify.error('Add at least one grade band')
+        return
+      }
     }
     setSaving(true)
     try {
@@ -1366,10 +1379,15 @@ function GradingScalePanel() {
             track,
             passMark: active.passMark,
             bands: active.bands,
+            scheme,
+            marksPerUnit: active.marksPerUnit,
           }) as Promise<GradingScalesBundle>,
         {
           loading: `Saving ${active.label}…`,
-          success: `${active.label} saved — monthly and term exams use these bands`,
+          success:
+            scheme === 'UNITS'
+              ? `${active.label} saved — ${active.marksPerUnit} marks make 1 unit`
+              : `${active.label} saved — monthly and term exams use these bands`,
           error: 'Could not save grading scale',
         },
       )) as GradingScalesBundle
@@ -1406,7 +1424,8 @@ function GradingScalePanel() {
       <CardHeader>
         <CardTitle>Grading scales</CardTitle>
         <CardDescription>
-          Set the percentage bands used to grade ECD, Grades 1–7, and secondary assessments.
+          ECD and secondary use letter grades. Grades 1–7 use units — set how many marks make one
+          unit.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -1434,11 +1453,51 @@ function GradingScalePanel() {
         <Alert title={active.label} tone="info">
           {{
             ECD: 'Used for ECD classes.',
-            PRIMARY: 'Used for Grade 1 through Grade 7 classes.',
+            PRIMARY: 'Used for Grade 1 through Grade 7. Results show units, not A–E letters.',
             FORM_1_4: 'Used for Form 1, 2, 3 and 4 classes (O-Level track).',
             FORM_5_6: 'Used for Form 5 and 6 classes (A-Level track).',
           }[track]}
         </Alert>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={(active.scheme ?? (track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')) === 'PERCENT_BANDS' ? 'default' : 'outline'}
+            onClick={() => updateActive({ scheme: 'PERCENT_BANDS' })}
+          >
+            Letter grades (A–U)
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={(active.scheme ?? (track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')) === 'UNITS' ? 'default' : 'outline'}
+            onClick={() =>
+              updateActive({
+                scheme: 'UNITS',
+                marksPerUnit: active.marksPerUnit && active.marksPerUnit > 0 ? active.marksPerUnit : 10,
+              })
+            }
+          >
+            Units
+          </Button>
+        </div>
+
+        {(active.scheme ?? (track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')) === 'UNITS' ? (
+          <Field className="max-w-xs">
+            <Label>Marks that make 1 unit</Label>
+            <Input
+              type="number"
+              min={1}
+              max={200}
+              value={active.marksPerUnit ?? 10}
+              onChange={(e) => updateActive({ marksPerUnit: Number(e.target.value) })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Example: 10 marks = 1 unit, so 20 marks = 2 units. A score of 35 becomes 3 units.
+            </p>
+          </Field>
+        ) : null}
 
         <Field className="max-w-xs">
           <Label>Pass mark (%)</Label>
@@ -1451,6 +1510,7 @@ function GradingScalePanel() {
           />
         </Field>
 
+        {(active.scheme ?? (track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')) === 'PERCENT_BANDS' ? (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Label>Grade bands (A, B, C, D, E, U)</Label>
@@ -1526,6 +1586,7 @@ function GradingScalePanel() {
             ))}
           </div>
         </div>
+        ) : null}
 
         <Button loading={saving} onClick={() => void save()}>
           Save {active.label} scale

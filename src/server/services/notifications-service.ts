@@ -56,6 +56,60 @@ export async function notifyRegisterSubmitted(input: {
   await setDoc('notifications', id, { ...row })
 }
 
+export async function notifyResultsSubmitted(input: {
+  assessmentId: string
+  assessmentName: string
+  className: string
+  subjectName: string
+  teacherName: string
+}): Promise<void> {
+  const id = newId('notif')
+  const row: AppNotification = {
+    id,
+    audience: 'ADMIN',
+    type: 'RESULTS_SUBMITTED',
+    title: 'Results waiting for approval',
+    body: `${input.teacherName} submitted ${input.subjectName} · ${input.className} (${input.assessmentName})`,
+    createdAt: new Date().toISOString(),
+    read: false,
+    href: '/examinations',
+    meta: {
+      className: input.className,
+      teacherName: input.teacherName,
+      assessmentId: input.assessmentId,
+      subjectName: input.subjectName,
+      status: 'SUBMITTED',
+    },
+  }
+  await setDoc('notifications', id, { ...row })
+}
+
+export async function notifyResultsReleased(input: {
+  assessmentId: string
+  assessmentName: string
+  className: string
+  subjectName: string
+}): Promise<void> {
+  const id = newId('notif')
+  const row: AppNotification = {
+    id,
+    audience: 'ADMIN',
+    type: 'RESULTS_RELEASED',
+    title: 'Results released to the portal',
+    body: `${input.subjectName} · ${input.className} is now visible to students (${input.assessmentName})`,
+    createdAt: new Date().toISOString(),
+    read: false,
+    href: '/results',
+    meta: {
+      className: input.className,
+      assessmentId: input.assessmentId,
+      subjectName: input.subjectName,
+      status: 'PUBLISHED',
+    },
+  }
+  await setDoc('notifications', id, { ...row })
+}
+
 /**
  * List admin notifications. When more than REGISTER_SUBMIT_NOTIFY_LIMIT
  * REGISTER_SUBMITTED items share a date, they collapse into one digest line:

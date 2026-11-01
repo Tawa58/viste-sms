@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/shared/page-header'
+import { SearchInput } from '@/components/shared/search-input'
 import { LoadingState } from '@/components/shared/loading-state'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Alert } from '@/components/shared/alert'
@@ -14,6 +15,7 @@ import { useAuth } from '@/contexts/auth-context'
 import {
   autoCommentForGrade,
   gradeFromScore,
+  isUnitsScale,
 } from '@/lib/grading'
 import { gradingTrackForLevel } from '@/lib/education-levels'
 import { catalogService, classService, studentService } from '@/services/api'
@@ -21,6 +23,8 @@ import { notify } from '@/lib/notify'
 import { fullName } from '@/lib/utils'
 import type {
   Assessment,
+  ClassResultsPeriod,
+  ClassResultsSummary,
   GradingScalesBundle,
   Mark,
   MarkCommentMode,
@@ -90,15 +94,10 @@ export function ExaminationsPage() {
   const canApprove = hasPermission('results.approve')
   const [loading, setLoading] = useState(true)
   const [assessments, setAssessments] = useState<Assessment[]>([])
-  const [marks, setMarks] = useState<Mark[]>([])
 
   async function reloadResults() {
-    const [a, m] = await Promise.all([
-      catalogService.getAssessments(),
-      catalogService.getMarks(),
-    ])
+    const a = await catalogService.getAssessments()
     setAssessments(a)
-    setMarks(m)
   }
 
   useEffect(() => {
@@ -134,7 +133,6 @@ export function ExaminationsPage() {
 
       <ClassSubjectMarksPanel
         assessments={assessments}
-        marks={marks}
         onSaved={reloadResults}
       />
 
@@ -155,11 +153,9 @@ export function ExaminationsPage() {
 
 function ClassSubjectMarksPanel({
   assessments,
-  marks,
   onSaved,
 }: {
   assessments: Assessment[]
-  marks: Mark[]
   onSaved: () => Promise<void>
 }) {
   const { user } = useAuth()
@@ -185,14 +181,14 @@ function ClassSubjectMarksPanel({
   const [entries, setEntries] = useState<Record<string, StudentEntry>>({})
   const [saving, setSaving] = useState(false)
   const [maxScoreInput, setMaxScoreInput] = useState('100')
+  const [marks, setMarks] = useState<Mark[]>([])
   const maxScore = Number(maxScoreInput)
 
   useEffect(() => {
     void (async () => {
-      const [cls, subs, stu, t] = await Promise.all([
+      const [cls, subs, t] = await Promise.all([
         classService.list(),
         catalogService.getSubjects(),
-        studentService.list(),
         catalogService.getTerms(),
       ])
       let me: Staff | null = null
@@ -217,7 +213,6 @@ function ClassSubjectMarksPanel({
           : subs
       setClasses(classList)
       setSubjects(subjectList)
-      setStudents(stu)
       setTerms(t)
       catalogService
         .getGradingScale()
@@ -239,6 +234,26 @@ function ClassSubjectMarksPanel({
       setTermId((prev) => prev || t.find((x) => x.sequence === 1)?.id || t[0]?.id || '')
     })()
   }, [user?.staffId, isTeacher, searchParams.get('classId'), searchParams.get('subjectId'), searchParams.get('periodType')])
+
+  useEffect(() => {
+    if (!classId) {
+      setStudents([])
+      return
+    }
+    let cancelled = false
+    void studentService
+      .list({ classId })
+      .then((rows) => {
+        if (!cancelled) setStudents(rows)
+      })
+      .catch((err) => {
+        console.error(err)
+        if (!cancelled) setStudents([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [classId])
 
   const roster = useMemo(
     () =>
@@ -268,6 +283,26 @@ function ClassSubjectMarksPanel({
   useEffect(() => {
     if (currentAssessment) setMaxScoreInput(String(currentAssessment.maxScore))
   }, [currentAssessment?.id, currentAssessment?.maxScore])
+
+  useEffect(() => {
+    if (!currentAssessment) {
+      setMarks([])
+      return
+    }
+    let cancelled = false
+    void catalogService
+      .getMarks(currentAssessment.id)
+      .then((rows) => {
+        if (!cancelled) setMarks(rows)
+      })
+      .catch((err) => {
+        console.error(err)
+        if (!cancelled) setMarks([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [currentAssessment?.id])
 
   useEffect(() => {
     if (!currentAssessment) {
@@ -546,7 +581,7 @@ function ClassSubjectMarksPanel({
                   <th className="px-3 py-2">#</th>
                   <th className="px-3 py-2">Student</th>
                   <th className="px-3 py-2">Mark /{maxScore}</th>
-                  <th className="px-3 py-2">Grade</th>
+                  <th className="px-3 py-2">{isUnitsScale(activeScale) ? 'Units' : 'Grade'}</th>
                   {showCommentColumn ? (
                     <th className="px-3 py-2">
                       {defaultCommentMode === 'AUTO' ? 'Auto comment' : 'Teacher comment'}
@@ -567,7 +602,12 @@ function ClassSubjectMarksPanel({
                   return (
                     <tr key={s.id} className="border-t border-border">
                       <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
-                      <td className="px-3 py-2 font-medium">{fullName(s)}</td>
+                      <td className="px-3 py-2 font-medium">
+                        {fullName(s)}
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                          {s.studentNumber}
+                        </span>
+                      </td>
                       <td className="px-3 py-2">
                         <Input
                           type="number"
@@ -766,7 +806,6 @@ export function ResultsPage() {
   const isStudent = user?.role === 'STUDENT'
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<ResultPortalView | null>(null)
-  const [selectedId, setSelectedId] = useState('')
 
   useEffect(() => {
     let mounted = true
@@ -776,7 +815,6 @@ export function ResultsPage() {
           const portal = await catalogService.getResultPortal(user.studentId)
           if (!mounted) return
           setView(portal)
-          setSelectedId(portal.studentId)
         }
       } catch (err) {
         console.error(err)
@@ -790,17 +828,8 @@ export function ResultsPage() {
     }
   }, [isStudent, user?.studentId])
 
-  useEffect(() => {
-    if (isStudent || !selectedId) return
-    void catalogService
-      .getResultPortal(selectedId)
-      .then(setView)
-      .catch((err) => console.error(err))
-  }, [selectedId, isStudent])
-
-  if (loading) return <LoadingState message="Loading results portal…" />
-
   if (isStudent) {
+    if (loading) return <LoadingState message="Loading results portal…" />
     return (
       <div className="space-y-4">
         <PageHeader
@@ -819,48 +848,325 @@ export function ResultsPage() {
     )
   }
 
-  return (
-    <div>
-      <PageHeader
-        title="Results"
-        description="Preview what students see after admin releases marks."
-        breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Results' }]}
-      />
-      <div className="mb-4 max-w-sm">
-        <Label className="mb-1.5 block">Student</Label>
-        <StudentPicker selectedId={selectedId} onPick={setSelectedId} />
-      </div>
-      {view ? (
-        <StudentProgressCard view={view} />
-      ) : (
-        <p className="text-sm text-muted-foreground">Select a student to preview their portal.</p>
-      )}
-    </div>
-  )
+  return <StaffClassResultsPage />
 }
 
-function StudentPicker({
-  selectedId,
-  onPick,
-}: {
-  selectedId: string
-  onPick: (id: string) => void
-}) {
+function currentMonthValue() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function StaffClassResultsPage() {
+  const [classes, setClasses] = useState<SchoolClass[]>([])
+  const [terms, setTerms] = useState<Term[]>([])
   const [students, setStudents] = useState<Student[]>([])
+  const [classId, setClassId] = useState('')
+  const [period, setPeriod] = useState<ClassResultsPeriod>('TERM')
+  const [termId, setTermId] = useState('')
+  const [month, setMonth] = useState(currentMonthValue())
+  const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState<'name' | 'number' | 'average'>('name')
+  const [summary, setSummary] = useState<ClassResultsSummary | null>(null)
+  const [loadingClasses, setLoadingClasses] = useState(true)
+  const [loadingSummary, setLoadingSummary] = useState(false)
+  const [selectedId, setSelectedId] = useState('')
+  const [view, setView] = useState<ResultPortalView | null>(null)
+
   useEffect(() => {
-    void studentService.list().then(setStudents).catch(console.error)
+    let mounted = true
+    void Promise.all([classService.list(), catalogService.getTerms()])
+      .then(([cls, t]) => {
+        if (!mounted) return
+        const active = cls
+          .filter((c) => (c.status ?? 'ACTIVE') === 'ACTIVE')
+          .sort((a, b) => a.name.localeCompare(b.name))
+        setClasses(active)
+        setTerms(t)
+        setTermId((prev) => prev || t.find((x) => x.sequence === 1)?.id || t[0]?.id || '')
+        setClassId((prev) => prev || active[0]?.id || '')
+      })
+      .catch((err) => {
+        console.error(err)
+        notify.error('Could not load classes')
+      })
+      .finally(() => {
+        if (mounted) setLoadingClasses(false)
+      })
+    return () => {
+      mounted = false
+    }
   }, [])
+
+  useEffect(() => {
+    if (!classId) {
+      setStudents([])
+      return
+    }
+    let cancelled = false
+    void studentService
+      .list({ classId })
+      .then((rows) => {
+        if (!cancelled) setStudents(rows.filter((s) => s.status === 'ACTIVE'))
+      })
+      .catch((err) => {
+        console.error(err)
+        if (!cancelled) setStudents([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [classId])
+
+  useEffect(() => {
+    if (!classId) return
+    if (period === 'TERM' && !termId) return
+    if (period === 'MONTH' && !month) return
+    let cancelled = false
+    setLoadingSummary(true)
+    void classService
+      .getResultsSummary(classId, period === 'TERM' ? { period, termId } : { period, month })
+      .then((res) => {
+        if (!cancelled) setSummary(res)
+      })
+      .catch((err) => {
+        console.error(err)
+        if (!cancelled) {
+          setSummary(null)
+          notify.error('Could not load class results')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSummary(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [classId, period, termId, month])
+
+  useEffect(() => {
+    setSelectedId('')
+    setView(null)
+    setSearch('')
+  }, [classId])
+
+  useEffect(() => {
+    if (!selectedId) {
+      setView(null)
+      return
+    }
+    let cancelled = false
+    void catalogService
+      .getResultPortal(selectedId)
+      .then((portal) => {
+        if (!cancelled) setView(portal)
+      })
+      .catch((err) => {
+        console.error(err)
+        if (!cancelled) notify.error('Could not load this student\'s results')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId])
+
+  const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students])
+  const selectedClass = classes.find((c) => c.id === classId)
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const list = students.filter((s) => {
+      if (!q) return true
+      return (
+        fullName(s).toLowerCase().includes(q) ||
+        s.studentNumber?.toLowerCase().includes(q) ||
+        s.admissionNumber?.toLowerCase().includes(q)
+      )
+    })
+    const summaryByStudent = new Map((summary?.students ?? []).map((r) => [r.studentId, r]))
+    list.sort((a, b) => {
+      const ra = summaryByStudent.get(a.id)
+      const rb = summaryByStudent.get(b.id)
+      if (sortBy === 'number') {
+        return (a.studentNumber || '').localeCompare(b.studentNumber || '', undefined, {
+          numeric: true,
+        })
+      }
+      if (sortBy === 'average') {
+        return (rb?.average ?? -1) - (ra?.average ?? -1)
+      }
+      return fullName(a).localeCompare(fullName(b))
+    })
+    return list.map((s) => ({ student: s, result: summaryByStudent.get(s.id) }))
+  }, [students, summary, search, sortBy])
+
+  if (loadingClasses) return <LoadingState message="Loading classes…" />
+
   return (
-    <Select value={selectedId} onChange={(e) => onPick(e.target.value)}>
-      <option value="">Select student…</option>
-      {students
-        .filter((s) => s.status === 'ACTIVE')
-        .map((s) => (
-          <option key={s.id} value={s.id}>
-            {fullName(s)}
-          </option>
-        ))}
-    </Select>
+    <div className="space-y-4">
+      <PageHeader
+        title="Results"
+        description="Choose a class to review marks for every student, then open one report if you need the full sheet."
+        breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Results' }]}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Class results</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label>Class</Label>
+              <Select
+                value={classId}
+                onChange={(e) => setClassId(e.target.value)}
+              >
+                <option value="">Select class…</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Period</Label>
+              <Select
+                value={period}
+                onChange={(e) => setPeriod(e.target.value as ClassResultsPeriod)}
+              >
+                <option value="TERM">End of term</option>
+                <option value="MONTH">Monthly</option>
+              </Select>
+            </div>
+            {period === 'TERM' ? (
+              <div className="space-y-1.5">
+                <Label>Term</Label>
+                <Select value={termId} onChange={(e) => setTermId(e.target.value)}>
+                  <option value="">Select term</option>
+                  {terms.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>Month</Label>
+                <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Sort by</Label>
+              <Select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'name' | 'number' | 'average')}
+              >
+                <option value="name">Name</option>
+                <option value="number">Student number</option>
+                <option value="average">Average</option>
+              </Select>
+            </div>
+          </div>
+
+          <SearchInput
+            id="class-results-search"
+            name="class-results-search"
+            value={search}
+            onChange={setSearch}
+            placeholder="Search this class by name or student number"
+          />
+
+          {!classId ? (
+            <p className="text-sm text-muted-foreground">Select a class to view results.</p>
+          ) : loadingSummary ? (
+            <p className="text-sm text-muted-foreground">Loading {selectedClass?.name} results…</p>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="bg-muted/60 text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">#</th>
+                    <th className="px-3 py-2">Student number</th>
+                    <th className="px-3 py-2">Name</th>
+                    {(summary?.subjects ?? []).map((subject) => (
+                      <th key={subject.id} className="px-3 py-2">
+                        {subject.name}
+                      </th>
+                    ))}
+                    <th className="px-3 py-2">Average</th>
+                    <th className="px-3 py-2">Grade</th>
+                    <th className="px-3 py-2">Pos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td
+                        className="px-3 py-6 text-muted-foreground"
+                        colSpan={6 + (summary?.subjects.length ?? 0)}
+                      >
+                        No students in this class match the search.
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map(({ student, result }, index) => {
+                      const subjectScore = new Map(
+                        (result?.subjects ?? []).map((s) => [s.subjectId, s]),
+                      )
+                      return (
+                        <tr
+                          key={student.id}
+                          className={`cursor-pointer border-t border-border ${
+                            selectedId === student.id ? 'bg-primary/5' : 'hover:bg-muted/40'
+                          }`}
+                          onClick={() => setSelectedId(student.id)}
+                        >
+                          <td className="px-3 py-2 text-muted-foreground">{index + 1}</td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {student.studentNumber || '—'}
+                          </td>
+                          <td className="px-3 py-2 font-medium">{fullName(student)}</td>
+                          {(summary?.subjects ?? []).map((subject) => {
+                            const score = subjectScore.get(subject.id)
+                            return (
+                              <td key={subject.id} className="px-3 py-2">
+                                {score
+                                  ? `${score.score}/${score.maxScore} · ${score.grade}`
+                                  : '—'}
+                              </td>
+                            )
+                          })}
+                          <td className="px-3 py-2">
+                            {result?.average != null ? `${result.average}%` : '—'}
+                          </td>
+                          <td className="px-3 py-2 font-semibold">{result?.grade || '—'}</td>
+                          <td className="px-3 py-2">{result?.position ?? '—'}</td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {classId ? (
+            <p className="text-xs text-muted-foreground">
+              {selectedClass?.name}: {rows.length} student(s). Click a row to open that student&apos;s
+              full results sheet.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {selectedId && view ? (
+        <StudentProgressCard view={view} />
+      ) : selectedId && !view ? (
+        <p className="text-sm text-muted-foreground">
+          Loading results for {studentById.get(selectedId) ? fullName(studentById.get(selectedId)!) : 'student'}…
+        </p>
+      ) : null}
+    </div>
   )
 }
 

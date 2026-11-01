@@ -8,6 +8,7 @@ import { forbidden } from '@/server/errors'
 import { queryCollection } from '@/server/repositories/firestore-repo'
 import { listInvoices, listPayments, resolveBillingTerm } from '@/server/services/finance-service'
 import { getGradingScaleForEducationLevel, gradeFromScore } from '@/server/services/grading-service'
+import { formatUnitGrade, isUnitsScale, unitsFromScore } from '@/lib/grading'
 import { currentMonthPeriod, invoiceBalance, invoicesForBillingPeriod } from '@/lib/fees'
 import { getResultsPortal } from '@/server/services/results-service'
 import { getFeePolicy, getSchoolProfile } from '@/server/services/school-settings-service'
@@ -204,7 +205,7 @@ function buildExams(ac: Academics, canSeeScores: boolean): StudentPortalExam[] {
         month: a.month,
         maxScore: a.maxScore,
         status: out ? 'RESULTS_OUT' : 'MARKING',
-        ...(out && mark && isReleased(mark.status) && canSeeScores
+        ...(out && mark && canSeeScores
           ? { score: mark.score, grade: mark.grade }
           : {}),
       }
@@ -242,12 +243,22 @@ function summarize(entries: ResultEntry[], scale: GradingScale) {
       const percents = sorted.map((e) => (e.score / e.maxScore) * 100)
       const percent = percents.reduce((s, p) => s + p, 0) / percents.length
       const single = sorted.length === 1 ? sorted[0] : null
+      const averagedUnits = isUnitsScale(scale)
+        ? Math.floor(
+            sorted.reduce((sum, e) => sum + unitsFromScore(e.score, scale.marksPerUnit), 0) /
+              sorted.length,
+          )
+        : null
       return {
         subject,
         score: single ? single.score : Math.round(percent * 10) / 10,
         maxScore: single ? single.maxScore : 100,
         percent,
-        grade: single ? single.grade : gradeFromScore(percent, 100, scale),
+        grade: single
+          ? single.grade
+          : averagedUnits != null
+            ? formatUnitGrade(averagedUnits)
+            : gradeFromScore(percent, 100, scale),
         teacherName: [...sorted].reverse().find((e) => e.teacherName)?.teacherName,
         comment: [...sorted].reverse().find((e) => e.comment?.trim())?.comment?.trim(),
       }
@@ -257,7 +268,19 @@ function summarize(entries: ResultEntry[], scale: GradingScale) {
   return {
     rows,
     average,
-    averageGrade: average != null ? gradeFromScore(average, 100, scale) : undefined,
+    averageGrade:
+      average == null
+        ? undefined
+        : isUnitsScale(scale)
+          ? formatUnitGrade(
+              Math.floor(
+                rows.reduce((sum, r) => {
+                  const n = Number(String(r.grade).match(/\d+/)?.[0])
+                  return sum + (Number.isFinite(n) ? n : 0)
+                }, 0) / rows.length,
+              ),
+            )
+          : gradeFromScore(average, 100, scale),
   }
 }
 
@@ -282,7 +305,7 @@ function buildResultPeriods(
   for (const a of ac.assessments) {
     if (!isReleased(a.status) || !(a.maxScore > 0)) continue
     const mark = ac.markByAssessment.get(a.id)
-    if (!mark || !isReleased(mark.status)) continue
+    if (!mark) continue
     const entry: ResultEntry = {
       subject: ac.subjectName.get(a.subjectId) ?? 'Subject',
       score: mark.score,

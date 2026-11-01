@@ -25,7 +25,14 @@ import type {
   Subject,
   Term,
 } from '@/types'
-import { getDoc, newId, queryCollection, setDoc } from '@/server/repositories/firestore-repo'
+import { getAdminDb } from '@/lib/firebase/admin'
+import {
+  getDoc,
+  newId,
+  queryAllCollection,
+  queryCollection,
+  setDoc,
+} from '@/server/repositories/firestore-repo'
 import { assertCanAccessStudent } from '@/server/authorization/isolation'
 import { badRequest, forbidden, notFound } from '@/server/errors'
 import { isFeeCleared } from '@/server/services/finance-service'
@@ -133,7 +140,7 @@ export async function upsertMark(
   }
 
   const existing = await queryCollection<Mark>('marks', {
-    limit: 1,
+    limit: 5,
     where: [
       { field: 'assessmentId', op: '==', value: input.assessmentId },
       { field: 'studentId', op: '==', value: input.studentId },
@@ -239,15 +246,30 @@ export async function transitionAssessmentStatus(
     finalStatus === 'APPROVED' ||
     finalStatus === 'SUBMITTED'
   ) {
-    const marks = await queryCollection<Mark>('marks', {
-      limit: 200,
+    const marks = await queryAllCollection<Mark>('marks', {
+      max: 2000,
       where: [{ field: 'assessmentId', op: '==', value: assessmentId }],
     })
+    const db = getAdminDb()
+    let batch = db.batch()
+    let ops = 0
     for (const m of marks) {
-      if (!isLocked(m.status)) {
-        await setDoc('marks', m.id, { ...m, status: finalStatus })
+      if (isLocked(m.status)) continue
+      batch.set(db.collection('marks').doc(m.id), { ...m, status: finalStatus })
+      ops += 1
+      if (ops >= 400) {
+        await batch.commit()
+        batch = db.batch()
+        ops = 0
       }
     }
+    if (ops > 0) await batch.commit()
+  }
+
+  if (finalStatus === 'SUBMITTED' || finalStatus === 'PUBLISHED') {
+    void notifyAssessmentWorkflow(updated, finalStatus).catch((err) =>
+      console.error('results notification failed', err),
+    )
   }
 
   await writeAuditLog({
@@ -280,20 +302,24 @@ export async function getResultsPortal(
   const [klass, stream, terms] = await Promise.all([
     getDoc<SchoolClass>('classes', student.classId),
     getDoc<Stream>('streams', student.streamId),
-    queryCollection<Term>('terms', { limit: 100 }),
+    queryAllCollection<Term>('terms', { max: 200 }),
   ])
 
   const term =
     (opts?.termId ? terms.find((t) => t.id === opts.termId) : undefined) ??
     [...terms].sort((a, b) => b.sequence - a.sequence)[0]
 
-  const assessments = await queryCollection<Assessment>('assessments', { limit: 200 })
+  const assessments = student.classId
+    ? await queryAllCollection<Assessment>('assessments', {
+        max: 1500,
+        where: [{ field: 'classId', op: '==', value: student.classId }],
+      })
+    : await queryAllCollection<Assessment>('assessments', { max: 1500 })
   const relevant = assessments.filter(
     (a) =>
       (!a.classId || a.classId === student.classId) &&
-      (!term || a.termId === term.id || a.type === 'MONTHLY' || a.type === 'DAILY'),
+      (!term || a.termId === term.id || a.type === 'MONTHLY' || a.type === 'DAILY' || a.type === 'WEEKLY' || a.type === 'MOCK'),
   )
-  void relevant
 
   const published = relevant.filter(
     (a) => a.status === 'PUBLISHED' || a.status === 'LOCKED',
@@ -324,19 +350,19 @@ export async function getResultsPortal(
     return { ...base, accessState, subjects: [] }
   }
 
-  const marks = await queryCollection<Mark>('marks', {
-    limit: 300,
+  const marks = await queryAllCollection<Mark>('marks', {
+    max: 1500,
     where: [{ field: 'studentId', op: '==', value: studentId }],
   })
   const markByAssessment = new Map(marks.map((m) => [m.assessmentId, m]))
-  const subjectsCatalog = await queryCollection<Subject>('subjects', { limit: 100 })
+  const subjectsCatalog = await queryAllCollection<Subject>('subjects', { max: 300 })
   const subjectName = new Map(subjectsCatalog.map((s) => [s.id, s.name]))
   const termName = new Map(terms.map((t) => [t.id, t.name]))
 
   const subjects = published
     .map((a) => {
       const m = markByAssessment.get(a.id)
-      if (!m || (m.status !== 'PUBLISHED' && m.status !== 'LOCKED')) return null
+      if (!m) return null
       return {
         name: subjectName.get(a.subjectId) ?? a.subjectId,
         score: m.score,
@@ -362,9 +388,9 @@ export async function getResultsPortal(
     }
   >()
   for (const a of published) {
-    if ((a.type !== 'MONTHLY' && a.type !== 'DAILY') || !a.month) continue
+    if ((a.type !== 'MONTHLY' && a.type !== 'DAILY' && a.type !== 'WEEKLY' && a.type !== 'MOCK') || !a.month) continue
     const m = markByAssessment.get(a.id)
-    if (!m || (m.status !== 'PUBLISHED' && m.status !== 'LOCKED')) continue
+    if (!m) continue
     const bucket =
       monthlyMap.get(a.month) ??
       ({
@@ -419,7 +445,7 @@ export async function getResultsPortal(
   for (const a of published) {
     if (a.type !== 'TERMLY') continue
     const m = markByAssessment.get(a.id)
-    if (!m || (m.status !== 'PUBLISHED' && m.status !== 'LOCKED')) continue
+    if (!m) continue
     const bucket =
       termlyMap.get(a.termId) ??
       ({
@@ -500,8 +526,8 @@ export async function submitClassSubjectMarks(
   const subject = await getDoc<Subject>('subjects', input.subjectId)
   if (!subject) throw notFound('Subject not found')
 
-  const students = await queryCollection<Student>('students', {
-    limit: 200,
+  const students = await queryAllCollection<Student>('students', {
+    max: 400,
     where: [{ field: 'classId', op: '==', value: input.classId }],
   })
   const active = students.filter((s) => s.status === 'ACTIVE')
@@ -617,6 +643,12 @@ export async function submitClassSubjectMarks(
     marks.push(row)
   }
 
+  if (status === 'SUBMITTED') {
+    void notifyAssessmentWorkflow(assessment, 'SUBMITTED').catch((err) =>
+      console.error('results notification failed', err),
+    )
+  }
+
   await writeAuditLog({
     actorId: session.uid,
     actorRole: session.role,
@@ -668,9 +700,42 @@ export async function submitMonthlyMarks(
   )
 }
 
+async function notifyAssessmentWorkflow(
+  assessment: Assessment,
+  status: MarkWorkflowStatus,
+) {
+  const { notifyResultsSubmitted, notifyResultsReleased } = await import(
+    '@/server/services/notifications-service'
+  )
+  const [klass, subject] = await Promise.all([
+    assessment.classId ? getDoc<SchoolClass>('classes', assessment.classId) : null,
+    getDoc<Subject>('subjects', assessment.subjectId),
+  ])
+  const className = klass?.name || assessment.classId || 'Class'
+  const subjectName = subject?.name || assessment.subjectId
+  if (status === 'SUBMITTED') {
+    await notifyResultsSubmitted({
+      assessmentId: assessment.id,
+      assessmentName: assessment.name,
+      className,
+      subjectName,
+      teacherName: assessment.enteredByName || 'A teacher',
+    })
+    return
+  }
+  if (status === 'PUBLISHED') {
+    await notifyResultsReleased({
+      assessmentId: assessment.id,
+      assessmentName: assessment.name,
+      className,
+      subjectName,
+    })
+  }
+}
+
 export async function listAssessments(session: SessionContext): Promise<AssessmentDto[]> {
   requirePermission(session, 'results.read')
-  let rows = await queryCollection<Assessment>('assessments', { limit: 200 })
+  let rows = await queryAllCollection<Assessment>('assessments', { max: 1500 })
   if (session.role === 'TEACHER') {
     const staffId = session.profile.staffId
     const staff = staffId ? await getDoc<Staff>('staff', staffId) : null
@@ -683,9 +748,24 @@ export async function listAssessments(session: SessionContext): Promise<Assessme
   return rows.sort((a, b) => (b.submittedAt || b.name).localeCompare(a.submittedAt || a.name))
 }
 
-export async function listMarks(session: SessionContext): Promise<MarkDto[]> {
+export async function listMarks(
+  session: SessionContext,
+  opts?: { assessmentId?: string; studentId?: string },
+): Promise<MarkDto[]> {
   requirePermission(session, 'results.read')
-  return queryCollection<Mark>('marks', { limit: 500 })
+  if (opts?.assessmentId) {
+    return queryAllCollection<Mark>('marks', {
+      max: 500,
+      where: [{ field: 'assessmentId', op: '==', value: opts.assessmentId }],
+    })
+  }
+  if (opts?.studentId) {
+    return queryAllCollection<Mark>('marks', {
+      max: 500,
+      where: [{ field: 'studentId', op: '==', value: opts.studentId }],
+    })
+  }
+  return queryAllCollection<Mark>('marks', { max: 800 })
 }
 
 export const getResultPortalService = getResultsPortal

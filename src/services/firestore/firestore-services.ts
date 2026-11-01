@@ -335,8 +335,9 @@ export const firestoreCatalogService = {
   async getPayments(): Promise<Payment[]> {
     return firestoreSchool.listPayments()
   },
-  async getMarks(): Promise<Mark[]> {
-    return firestoreSchool.listMarks()
+  async getMarks(assessmentId?: string, studentId?: string): Promise<Mark[]> {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.getMarks(assessmentId, studentId)
   },
   async getAssessments() {
     return firestoreSchool.listAssessments()
@@ -549,6 +550,8 @@ export const firestoreCatalogService = {
     track: import('@/types').GradingTrack
     passMark: number
     bands: { grade: string; minPercent: number; maxPercent: number }[]
+    scheme?: import('@/types').GradingScheme
+    marksPerUnit?: number
   }) {
     const { apiCatalogService } = await import('@/services/api/server-api-services')
     return apiCatalogService.updateGradingScale(input)

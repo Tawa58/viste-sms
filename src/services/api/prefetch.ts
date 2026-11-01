@@ -62,13 +62,12 @@ export async function prefetchRestSchoolData(): Promise<void> {
   }
 }
 
-/** Warm critical now; schedule the rest when the browser is idle. */
+/**
+ * Warm catalog/dashboard only. Full student/fee/attendance dumps were
+ * burning Firestore quota on every login and blocking sign-in.
+ */
 export function prefetchSchoolData(): void {
-  void prefetchCriticalSchoolData().then(() => {
-    runIdle(() => {
-      void prefetchRestSchoolData()
-    })
-  })
+  void prefetchCriticalSchoolData()
 }
 
 export function clearSchoolDataCache() {

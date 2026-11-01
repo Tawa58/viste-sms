@@ -124,7 +124,7 @@ export function StudentDetailPage() {
       catalogService.getGuardians().catch(() => [] as import('@/types').Guardian[]),
       catalogService.getAttendance(),
       catalogService.getInvoices(),
-      catalogService.getMarks(),
+      catalogService.getMarks(undefined, id),
       studentService.listExemptions?.(id) ?? Promise.resolve([]),
       studentService.listScholarships?.(id) ?? Promise.resolve([]),
       studentService.listTransfers?.(id) ?? Promise.resolve([]),

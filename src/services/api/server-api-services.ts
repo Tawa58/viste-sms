@@ -615,7 +615,12 @@ export const apiCatalogService = {
     }),
   getExaminations: async (): Promise<Examination[]> => [],
   getAssessments: () => apiFetch<Assessment[]>('/api/v1/results?kind=assessments'),
-  getMarks: () => apiFetch<Mark[]>('/api/v1/results?kind=marks'),
+  getMarks: (assessmentId?: string, studentId?: string) => {
+    const params = new URLSearchParams({ kind: 'marks' })
+    if (assessmentId) params.set('assessmentId', assessmentId)
+    if (studentId) params.set('forStudentId', studentId)
+    return apiFetch<Mark[]>(`/api/v1/results?${params}`)
+  },
   submitClassSubjectMarks: (input: {
     classId: string
     subjectId: string
@@ -689,6 +694,8 @@ export const apiCatalogService = {
     track: import('@/types').GradingTrack
     passMark: number
     bands: import('@/types').GradeBand[]
+    scheme?: import('@/types').GradingScheme
+    marksPerUnit?: number
   }) =>
     apiFetch<import('@/types').GradingScalesBundle>('/api/v1/grading', {
       method: 'PUT',

@@ -102,12 +102,37 @@ export async function deleteDoc(collection: string, id: string): Promise<void> {
   await getAdminDb().collection(collection).doc(id).delete()
 }
 
-/** Run a constrained query (max 100). */
+/** Run a constrained query (max 100 per page). */
 export async function queryCollection<T extends { id: string }>(
   collection: string,
   opts?: ListOptions,
 ): Promise<T[]> {
   const { items } = await listCollection<T>(collection, opts)
+  return items
+}
+
+/**
+ * Page through a collection in 100-doc chunks. Use this when a hard 100-doc
+ * cap would silently drop rows (marks, assessments, class lists).
+ */
+export async function queryAllCollection<T extends { id: string }>(
+  collection: string,
+  opts?: Omit<ListOptions, 'cursor' | 'limit'> & { max?: number },
+): Promise<T[]> {
+  const max = Math.min(Math.max(opts?.max ?? 1000, 1), 5000)
+  const items: T[] = []
+  let cursor: string | undefined
+  while (items.length < max) {
+    const pageLimit = Math.min(100, max - items.length)
+    const { items: page, nextCursor } = await listCollection<T>(collection, {
+      ...opts,
+      limit: pageLimit,
+      cursor,
+    })
+    items.push(...page)
+    if (!nextCursor || page.length === 0) break
+    cursor = nextCursor
+  }
   return items
 }
 

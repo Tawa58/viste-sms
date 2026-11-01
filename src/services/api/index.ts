@@ -791,7 +791,14 @@ const mockCatalogService = {
   },
   getExaminations: (): Promise<Examination[]> => mockRequest(examinations),
   getAssessments: (): Promise<Assessment[]> => mockRequest(assessments),
-  getMarks: (): Promise<Mark[]> => mockRequest(marks),
+  getMarks: (assessmentId?: string, studentId?: string): Promise<Mark[]> =>
+    mockRequest(
+      marks.filter(
+        (m) =>
+          (!assessmentId || m.assessmentId === assessmentId) &&
+          (!studentId || m.studentId === studentId),
+      ),
+    ),
   submitMonthlyMarks: async (input: {
     classId: string
     subjectId: string
@@ -930,6 +937,8 @@ const mockCatalogService = {
         track: 'PRIMARY' as const,
         label: 'Grades 1–7',
         passMark: 50,
+        scheme: 'UNITS' as const,
+        marksPerUnit: 10,
         bands: [
           { grade: 'A', minPercent: 80, maxPercent: 100 },
           { grade: 'B', minPercent: 70, maxPercent: 79 },
@@ -972,6 +981,8 @@ const mockCatalogService = {
     track: import('@/types').GradingTrack
     passMark: number
     bands: { grade: string; minPercent: number; maxPercent: number }[]
+    scheme?: import('@/types').GradingScheme
+    marksPerUnit?: number
   }) => {
     const base = {
       ECD: {
@@ -993,6 +1004,8 @@ const mockCatalogService = {
         track: 'PRIMARY' as const,
         label: 'Grades 1–7',
         passMark: 50,
+        scheme: 'UNITS' as const,
+        marksPerUnit: 10,
         bands: [
           { grade: 'A', minPercent: 80, maxPercent: 100 },
           { grade: 'B', minPercent: 70, maxPercent: 79 },
@@ -1044,6 +1057,8 @@ const mockCatalogService = {
         }[input.track],
         passMark: input.passMark,
         bands: input.bands,
+        scheme: input.scheme,
+        marksPerUnit: input.marksPerUnit,
       },
     })
   },

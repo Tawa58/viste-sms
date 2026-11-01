@@ -310,12 +310,18 @@ export interface GradeBand {
 /** School grading schemes, from ECD through A-Level. */
 export type GradingTrack = 'ECD' | 'PRIMARY' | 'FORM_1_4' | 'FORM_5_6'
 
+export type GradingScheme = 'PERCENT_BANDS' | 'UNITS'
+
 export interface GradingScale {
   id: GradingTrack
   track: GradingTrack
   label: string
   passMark: number
   bands: GradeBand[]
+  /** PRIMARY uses units by default; secondary uses letter bands. */
+  scheme?: GradingScheme
+  /** How many raw marks equal one unit (admin-set). Used when scheme is UNITS. */
+  marksPerUnit?: number
   updatedAt?: string
   updatedBy?: string
 }
@@ -575,6 +581,8 @@ export type AppNotificationType =
   | 'REGISTER_SUBMITTED'
   | 'REGISTER_SUBMITTED_DIGEST'
   | 'REGISTER_MISSING'
+  | 'RESULTS_SUBMITTED'
+  | 'RESULTS_RELEASED'
 
 export interface AppNotificationClassContact {
   classId: string
@@ -602,6 +610,9 @@ export interface AppNotification {
     teacherName?: string
     count?: number
     classes?: AppNotificationClassContact[]
+    assessmentId?: string
+    subjectName?: string
+    status?: string
   }
 }
 

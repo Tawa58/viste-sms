@@ -8,7 +8,7 @@ import {
   assertTeacherOwnsClass,
 } from '@/server/authorization/isolation'
 import { badRequest, notFound } from '@/server/errors'
-import { getDoc, queryCollection, setDoc } from '@/server/repositories/firestore-repo'
+import { getDoc, queryAllCollection, queryCollection, setDoc } from '@/server/repositories/firestore-repo'
 import type {
   classTeacherReportsUpsertSchema,
   dutyRosterUpsertSchema,
@@ -76,8 +76,8 @@ export async function upsertClassTeacherReports(
   const term = await getDoc<Term>('terms', input.termId)
   if (!term) throw notFound('Term not found')
 
-  const students = await queryCollection<Student>('students', {
-    limit: 200,
+  const students = await queryAllCollection<Student>('students', {
+    max: 400,
     where: [{ field: 'classId', op: '==', value: classId }],
   })
   const allowed = new Set(
@@ -177,7 +177,9 @@ export async function getClassResultsSummary(
   input: { period: ClassResultsPeriod; termId?: string; month?: string },
 ): Promise<ClassResultsSummary> {
   requirePermission(session, 'results.read')
-  await assertClassTeacherOrAdmin(session, classId)
+  if (session.role === 'TEACHER') {
+    await assertTeacherOwnsClass(session, classId)
+  }
 
   const cls = await getDoc<SchoolClass>('classes', classId)
   if (!cls) throw notFound('Class not found')
@@ -193,7 +195,7 @@ export async function getClassResultsSummary(
           { field: 'type', op: '==' as const, value: 'TERMLY' },
           { field: 'termId', op: '==' as const, value: input.termId },
         ]
-  const assessments = (await queryCollection<Assessment>('assessments', { limit: 100, where }))
+  const assessments = (await queryAllCollection<Assessment>('assessments', { max: 400, where }))
     .filter((a) =>
       input.period === 'MONTH'
         ? a.type === 'MONTHLY' || a.type === 'DAILY'
@@ -201,14 +203,14 @@ export async function getClassResultsSummary(
     )
 
   const [students, markLists, subjectDocs, scale] = await Promise.all([
-    queryCollection<Student>('students', {
-      limit: 100,
+    queryAllCollection<Student>('students', {
+      max: 400,
       where: [{ field: 'classId', op: '==', value: classId }],
     }),
     Promise.all(
       assessments.map((a) =>
-        queryCollection<Mark>('marks', {
-          limit: 100,
+        queryAllCollection<Mark>('marks', {
+          max: 400,
           where: [{ field: 'assessmentId', op: '==', value: a.id }],
         }),
       ),

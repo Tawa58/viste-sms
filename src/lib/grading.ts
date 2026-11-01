@@ -1,5 +1,20 @@
 import type { GradeBand, GradingScale } from '@/types'
 
+export function unitsFromScore(score: number, marksPerUnit: number): number {
+  if (!(marksPerUnit > 0)) return 0
+  return Math.floor(Math.max(0, score) / marksPerUnit)
+}
+
+export function formatUnitGrade(units: number): string {
+  return units === 1 ? '1 unit' : `${units} units`
+}
+
+export function isUnitsScale(
+  scale?: Pick<GradingScale, 'scheme' | 'marksPerUnit'> | null,
+): scale is Pick<GradingScale, 'scheme' | 'marksPerUnit'> & { marksPerUnit: number } {
+  return scale?.scheme === 'UNITS' && typeof scale.marksPerUnit === 'number' && scale.marksPerUnit > 0
+}
+
 /** Default O-Level bands for live mark-entry preview when scales are not loaded yet. */
 export const PREVIEW_FORM_1_4_BANDS: GradeBand[] = [
   { grade: 'A', minPercent: 80, maxPercent: 100 },
@@ -32,8 +47,11 @@ export function gradeFromPercent(percent: number, bands: GradeBand[]): string {
 export function gradeFromScore(
   score: number,
   maxScore: number,
-  scale?: Pick<GradingScale, 'bands'> | null,
+  scale?: Pick<GradingScale, 'bands' | 'scheme' | 'marksPerUnit'> | null,
 ): string {
+  if (isUnitsScale(scale)) {
+    return formatUnitGrade(unitsFromScore(score, scale.marksPerUnit))
+  }
   const max = maxScore > 0 ? maxScore : 100
   const percent = (score / max) * 100
   return gradeFromPercent(percent, scale?.bands?.length ? scale.bands : PREVIEW_FORM_1_4_BANDS)
@@ -44,6 +62,15 @@ export type CommentMode = 'NONE' | 'AUTO' | 'CUSTOM'
 /** Short professional remark derived from letter grade. */
 export function autoCommentForGrade(grade: string): string {
   const g = grade.trim().toUpperCase()
+  const unitsMatch = g.match(/^(\d+)\s*UNITS?$/)
+  if (unitsMatch) {
+    const units = Number(unitsMatch[1])
+    if (units >= 8) return 'Excellent work. Keep up this outstanding standard.'
+    if (units >= 6) return 'Very good performance. Continue to aim higher.'
+    if (units >= 4) return 'Satisfactory progress. Focus on consistency and revision.'
+    if (units >= 2) return 'Fair effort. Extra practice is needed to improve.'
+    return 'Below expected standard. Seek support and revise regularly.'
+  }
   switch (g) {
     case 'A':
       return 'Excellent work. Keep up this outstanding standard.'

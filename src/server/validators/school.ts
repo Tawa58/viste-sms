@@ -431,20 +431,43 @@ export const monthlyMarksSchema = z.object({
   action: z.enum(['draft', 'submit']).optional(),
 })
 
-export const gradingScaleSchema = z.object({
-  track: z.enum(['ECD', 'PRIMARY', 'FORM_1_4', 'FORM_5_6']),
-  passMark: z.number().min(0).max(100),
-  bands: z
-    .array(
-      z.object({
-        grade: z.string().min(1).max(8),
-        minPercent: z.number().min(0).max(100),
-        maxPercent: z.number().min(0).max(100),
-      }),
-    )
-    .min(1)
-    .max(20),
-})
+export const gradingScaleSchema = z
+  .object({
+    track: z.enum(['ECD', 'PRIMARY', 'FORM_1_4', 'FORM_5_6']),
+    passMark: z.number().min(0).max(100),
+    scheme: z.enum(['PERCENT_BANDS', 'UNITS']).optional(),
+    marksPerUnit: z.number().min(1).max(200).optional(),
+    bands: z
+      .array(
+        z.object({
+          grade: z.string().min(1).max(16),
+          minPercent: z.number().min(0).max(100),
+          maxPercent: z.number().min(0).max(100),
+        }),
+      )
+      .max(20)
+      .optional()
+      .default([]),
+  })
+  .superRefine((data, ctx) => {
+    if (data.scheme === 'UNITS') {
+      if (!data.marksPerUnit) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Set how many marks make 1 unit',
+          path: ['marksPerUnit'],
+        })
+      }
+      return
+    }
+    if (!data.bands.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At least one grade band is required',
+        path: ['bands'],
+      })
+    }
+  })
 
 /** Allowed forward transitions for mark/assessment workflow. */
 export const resultTransitionSchema = z.object({

@@ -209,16 +209,24 @@ export async function listAccessibleStudents(session: SessionContext): Promise<S
   }
 
   if (session.role === 'TEACHER') {
-    const classIds = new Set(await resolveTeacherClassIds(session))
-    if (classIds.size === 0) return []
-    const snap = await db.collection('students').limit(500).get()
-    return snap.docs
-      .map((d) => ({ id: d.id, ...(d.data() as Omit<Student, 'id'>) }))
-      .filter((s) => classIds.has(s.classId))
+    const classIds = await resolveTeacherClassIds(session)
+    if (classIds.length === 0) return []
+    const { queryAllCollection } = await import('@/server/repositories/firestore-repo')
+    const chunks = await Promise.all(
+      classIds.map((classId) =>
+        queryAllCollection<Student>('students', {
+          max: 400,
+          where: [{ field: 'classId', op: '==', value: classId }],
+        }),
+      ),
+    )
+    const byId = new Map<string, Student>()
+    for (const row of chunks.flat()) byId.set(row.id, row)
+    return [...byId.values()]
   }
 
-  const snap = await db.collection('students').limit(500).get()
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Student, 'id'>) }))
+  const { queryAllCollection } = await import('@/server/repositories/firestore-repo')
+  return queryAllCollection<Student>('students', { max: 3000 })
 }
 
 /** Teachers may manage students in taught classes and classes they own as class teacher. */
