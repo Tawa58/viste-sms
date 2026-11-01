@@ -901,15 +901,12 @@ const mockCatalogService = {
   },
   transitionAssessment: async (input: {
     assessmentId: string
-    status: 'SUBMITTED' | 'APPROVED' | 'PUBLISHED' | 'LOCKED'
+    status: 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'LOCKED'
     releaseToPortal?: boolean
   }) => {
     const idx = assessments.findIndex((a) => a.id === input.assessmentId)
     if (idx < 0) throw new Error('Assessment not found')
-    const next =
-      input.releaseToPortal && input.status === 'APPROVED'
-        ? ('PUBLISHED' as const)
-        : input.status
+    const next = input.releaseToPortal ? ('PUBLISHED' as const) : input.status
     assessments[idx] = { ...assessments[idx], status: next }
     for (const m of marks.filter((x) => x.assessmentId === input.assessmentId)) {
       m.status = next

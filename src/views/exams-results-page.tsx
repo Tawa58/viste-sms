@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { PageHeader } from '@/components/shared/page-header'
 import { SearchInput } from '@/components/shared/search-input'
 import { LoadingState } from '@/components/shared/loading-state'
@@ -36,7 +36,7 @@ import type {
   Term,
 } from '@/types'
 
-const workflow = ['Draft', 'Submitted', 'Admin review', 'Published on portal'] as const
+const workflow = ['Draft', 'Submitted', 'Review', 'Approved', 'Released'] as const
 
 type PeriodType = 'DAILY' | 'MONTHLY' | 'WEEKLY' | 'MOCK' | 'TERMLY'
 
@@ -137,13 +137,16 @@ export function ExaminationsPage() {
       />
 
       {canApprove ? (
-        <ResultsApprovalsPanel
-          assessments={assessments}
-          onUpdated={reloadResults}
-        />
+        <Alert title="Approvals" tone="info">
+          Open{' '}
+          <Link to="/approvals" className="font-semibold text-primary underline-offset-2 hover:underline">
+            Approvals
+          </Link>{' '}
+          to review, hold, deny, or release submitted results.
+        </Alert>
       ) : (
         <Alert title="After you submit" tone="info">
-          Your head of department or admin will approve and release marks to the student portal.
+          Your head of department or admin will review, deny, or release marks from Approvals.
           You cannot publish directly.
         </Alert>
       )}
@@ -662,6 +665,50 @@ function ClassSubjectMarksPanel({
   )
 }
 
+export function ApprovalsPage() {
+  const { hasPermission } = useAuth()
+  const canApprove = hasPermission('results.approve')
+  const [loading, setLoading] = useState(true)
+  const [assessments, setAssessments] = useState<Assessment[]>([])
+
+  async function reload() {
+    setAssessments(await catalogService.getAssessments())
+  }
+
+  useEffect(() => {
+    reload()
+      .catch(() => notify.error('Could not load approvals'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <LoadingState message="Loading approvals…" />
+  if (!canApprove) {
+    return (
+      <div className="space-y-4">
+        <PageHeader
+          title="Approvals"
+          description="Review submitted results."
+          breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Approvals' }]}
+        />
+        <Alert title="No approval access" tone="warning">
+          Your account can enter marks, but only an admin can review, deny, or release them.
+        </Alert>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <PageHeader
+        title="Approvals"
+        description="Hold results for review, send them back, approve, or release them to the portal."
+        breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Approvals' }]}
+      />
+      <ResultsApprovalsPanel assessments={assessments} onUpdated={reload} />
+    </div>
+  )
+}
+
 function ResultsApprovalsPanel({
   assessments,
   onUpdated,
@@ -690,28 +737,30 @@ function ResultsApprovalsPanel({
         (a) =>
           a.status === 'SUBMITTED' ||
           a.status === 'UNDER_REVIEW' ||
-          a.status === 'APPROVED',
+          a.status === 'APPROVED' ||
+          a.status === 'REJECTED',
       )
       .filter((a) => !filterClass || a.classId === filterClass)
       .filter((a) => !filterSubject || a.subjectId === filterSubject)
       .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''))
   }, [assessments, filterClass, filterSubject])
 
-  async function release(assessmentId: string) {
+  async function act(
+    assessmentId: string,
+    status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PUBLISHED',
+    messages: { loading: string; success: string; error: string },
+    releaseToPortal = false,
+  ) {
     setBusyId(assessmentId)
     try {
       await notify.process(
         () =>
           catalogService.transitionAssessment({
             assessmentId,
-            status: 'APPROVED',
-            releaseToPortal: true,
+            status,
+            releaseToPortal,
           }),
-        {
-          loading: 'Approving and releasing…',
-          success: 'Results are now visible on the student portal',
-          error: 'Could not release results',
-        },
+        messages,
       )
       await onUpdated()
     } finally {
@@ -722,10 +771,9 @@ function ResultsApprovalsPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Approve & release</CardTitle>
+        <CardTitle>Pending results</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Review submitted class marks by subject. Approve to publish them to student and parent
-          portals.
+          Review, hold, deny, approve, or release each submitted class sheet.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -758,42 +806,99 @@ function ResultsApprovalsPanel({
           <p className="text-sm text-muted-foreground">No submissions waiting for approval.</p>
         ) : (
           <ul className="divide-y divide-border rounded-xl border border-border">
-            {pending.map((a) => (
-              <li
-                key={a.id}
-                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-              >
-                <div>
-                  <p className="font-medium">{a.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {classes.find((c) => c.id === a.classId)?.name || a.classId || '—'} ·{' '}
-                    {subjects.find((s) => s.id === a.subjectId)?.name || a.subjectId} ·{' '}
-                    {a.type}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={a.status} />
-                  {a.status === 'SUBMITTED' || a.status === 'UNDER_REVIEW' ? (
-                    <Button
-                      size="sm"
-                      loading={busyId === a.id}
-                      onClick={() => void release(a.id)}
-                    >
-                      Approve & release
-                    </Button>
-                  ) : a.status === 'APPROVED' ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      loading={busyId === a.id}
-                      onClick={() => void release(a.id)}
-                    >
-                      Release to portal
-                    </Button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
+            {pending.map((a) => {
+              const busy = busyId === a.id
+              const open =
+                a.status === 'SUBMITTED' ||
+                a.status === 'UNDER_REVIEW' ||
+                a.status === 'APPROVED'
+              return (
+                <li
+                  key={a.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                >
+                  <div>
+                    <p className="font-medium">{a.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {classes.find((c) => c.id === a.classId)?.name || a.classId || '—'} ·{' '}
+                      {subjects.find((s) => s.id === a.subjectId)?.name || a.subjectId} ·{' '}
+                      {a.type}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <StatusBadge status={a.status} />
+                    {open ? (
+                      <>
+                        {a.status !== 'UNDER_REVIEW' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            loading={busy}
+                            onClick={() =>
+                              void act(a.id, 'UNDER_REVIEW', {
+                                loading: 'Holding for review…',
+                                success: 'Held for review',
+                                error: 'Could not hold for review',
+                              })
+                            }
+                          >
+                            Review
+                          </Button>
+                        ) : null}
+                        {a.status !== 'APPROVED' ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            loading={busy}
+                            onClick={() =>
+                              void act(a.id, 'APPROVED', {
+                                loading: 'Approving…',
+                                success: 'Approved — release when ready',
+                                error: 'Could not approve',
+                              })
+                            }
+                          >
+                            Approve
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="sm"
+                          loading={busy}
+                          onClick={() =>
+                            void act(
+                              a.id,
+                              'PUBLISHED',
+                              {
+                                loading: 'Releasing…',
+                                success: 'Released to the student portal',
+                                error: 'Could not release',
+                              },
+                              true,
+                            )
+                          }
+                        >
+                          Release
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          loading={busy}
+                          onClick={() =>
+                            void act(a.id, 'REJECTED', {
+                              loading: 'Sending back…',
+                              success: 'Denied — teacher can correct and resubmit',
+                              error: 'Could not deny',
+                            })
+                          }
+                        >
+                          Deny
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         )}
       </CardContent>

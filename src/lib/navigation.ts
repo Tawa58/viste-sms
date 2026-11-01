@@ -30,6 +30,7 @@ import {
   ChartColumn,
   Receipt,
   HandCoins,
+  BadgeCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { canAccessPath } from '@/lib/roles'
@@ -60,6 +61,7 @@ export const mainNav: NavItem[] = [
   { label: 'Attendance', to: '/attendance', icon: CalendarCheck },
   { label: 'Examinations', to: '/examinations', icon: ClipboardList },
   { label: 'Results', to: '/results', icon: Trophy },
+  { label: 'Approvals', to: '/approvals', icon: BadgeCheck },
   { label: 'Fees & Payments', to: '/fees', icon: Wallet },
   { label: 'Financial dashboard', to: '/finance', icon: ChartColumn },
   { label: 'Expenses', to: '/expenses', icon: Receipt },
@@ -110,6 +112,7 @@ export const navGroups: NavGroup[] = [
       { label: 'Attendance', to: '/attendance', icon: CalendarCheck },
       { label: 'Examinations', to: '/examinations', icon: ClipboardList },
       { label: 'Results', to: '/results', icon: Trophy },
+      { label: 'Approvals', to: '/approvals', icon: BadgeCheck },
     ],
   },
   {

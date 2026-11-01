@@ -82,6 +82,7 @@ const ClubsPage = lazyPage(() => import('@/views/extracurricular-page'), 'ClubsP
 const AttendancePage = lazyPage(() => import('@/views/attendance-page'), 'AttendancePage')
 const ExaminationsPage = lazyPage(() => import('@/views/exams-results-page'), 'ExaminationsPage')
 const ResultsPage = lazyPage(() => import('@/views/exams-results-page'), 'ResultsPage')
+const ApprovalsPage = lazyPage(() => import('@/views/exams-results-page'), 'ApprovalsPage')
 const FeesPage = lazyPage(() => import('@/views/fees-page'), 'FeesPage')
 const ParentsPage = lazyPage(() => import('@/views/fees-parents-page'), 'ParentsPage')
 const ParentDetailPage = lazyPage(() => import('@/views/fees-parents-page'), 'ParentDetailPage')
@@ -205,6 +206,7 @@ export default function App() {
                 <Route path="/attendance" element={<AttendancePage />} />
                 <Route path="/examinations" element={<ExaminationsPage />} />
                 <Route path="/results" element={<ResultsPage />} />
+                <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/fees" element={<FeesPage />} />
                 <Route path="/finance" element={<FinanceDashboardPage />} />
                 <Route path="/expenses" element={<ExpensesPage />} />

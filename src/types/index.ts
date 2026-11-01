@@ -66,6 +66,7 @@ export type MarkWorkflowStatus =
   | 'SUBMITTED'
   | 'UNDER_REVIEW'
   | 'APPROVED'
+  | 'REJECTED'
   | 'PUBLISHED'
   | 'LOCKED'
 
@@ -583,6 +584,8 @@ export type AppNotificationType =
   | 'REGISTER_MISSING'
   | 'RESULTS_SUBMITTED'
   | 'RESULTS_RELEASED'
+  | 'RESULTS_UNDER_REVIEW'
+  | 'RESULTS_DENIED'
 
 export interface AppNotificationClassContact {
   classId: string

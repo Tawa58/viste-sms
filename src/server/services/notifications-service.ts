@@ -72,7 +72,7 @@ export async function notifyResultsSubmitted(input: {
     body: `${input.teacherName} submitted ${input.subjectName} · ${input.className} (${input.assessmentName})`,
     createdAt: new Date().toISOString(),
     read: false,
-    href: '/examinations',
+    href: '/approvals',
     meta: {
       className: input.className,
       teacherName: input.teacherName,
@@ -105,6 +105,58 @@ export async function notifyResultsReleased(input: {
       assessmentId: input.assessmentId,
       subjectName: input.subjectName,
       status: 'PUBLISHED',
+    },
+  }
+  await setDoc('notifications', id, { ...row })
+}
+
+export async function notifyResultsUnderReview(input: {
+  assessmentId: string
+  assessmentName: string
+  className: string
+  subjectName: string
+}): Promise<void> {
+  const id = newId('notif')
+  const row: AppNotification = {
+    id,
+    audience: 'ADMIN',
+    type: 'RESULTS_UNDER_REVIEW',
+    title: 'Results held for review',
+    body: `${input.subjectName} · ${input.className} is waiting for review (${input.assessmentName})`,
+    createdAt: new Date().toISOString(),
+    read: false,
+    href: '/approvals',
+    meta: {
+      className: input.className,
+      assessmentId: input.assessmentId,
+      subjectName: input.subjectName,
+      status: 'UNDER_REVIEW',
+    },
+  }
+  await setDoc('notifications', id, { ...row })
+}
+
+export async function notifyResultsDenied(input: {
+  assessmentId: string
+  assessmentName: string
+  className: string
+  subjectName: string
+}): Promise<void> {
+  const id = newId('notif')
+  const row: AppNotification = {
+    id,
+    audience: 'ADMIN',
+    type: 'RESULTS_DENIED',
+    title: 'Results sent back',
+    body: `${input.subjectName} · ${input.className} was denied and sent back to the teacher (${input.assessmentName})`,
+    createdAt: new Date().toISOString(),
+    read: false,
+    href: '/approvals',
+    meta: {
+      className: input.className,
+      assessmentId: input.assessmentId,
+      subjectName: input.subjectName,
+      status: 'REJECTED',
     },
   }
   await setDoc('notifications', id, { ...row })

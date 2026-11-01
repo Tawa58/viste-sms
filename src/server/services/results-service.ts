@@ -41,12 +41,13 @@ export type MarkDto = Mark
 export type AssessmentDto = Assessment
 export type ResultPortalDto = ResultPortalView
 
-/** DRAFT → SUBMITTED → APPROVED → PUBLISHED → LOCKED (+ UNDER_REVIEW bridge). */
+/** DRAFT → SUBMITTED → UNDER_REVIEW / APPROVED / REJECTED → PUBLISHED → LOCKED. */
 const FORWARD: Record<MarkWorkflowStatus, MarkWorkflowStatus[]> = {
   DRAFT: ['SUBMITTED'],
-  SUBMITTED: ['APPROVED', 'UNDER_REVIEW'],
-  UNDER_REVIEW: ['APPROVED'],
-  APPROVED: ['PUBLISHED'],
+  SUBMITTED: ['APPROVED', 'UNDER_REVIEW', 'REJECTED'],
+  UNDER_REVIEW: ['APPROVED', 'REJECTED'],
+  APPROVED: ['PUBLISHED', 'UNDER_REVIEW', 'REJECTED'],
+  REJECTED: ['SUBMITTED', 'DRAFT'],
   PUBLISHED: ['LOCKED'],
   LOCKED: [],
 }
@@ -63,8 +64,9 @@ function isLocked(status: MarkWorkflowStatus) {
 }
 
 function requireTransitionPermission(session: SessionContext, next: MarkWorkflowStatus) {
-  if (next === 'APPROVED') requirePermission(session, 'results.approve')
-  else if (next === 'PUBLISHED') requirePermission(session, 'results.publish')
+  if (next === 'APPROVED' || next === 'UNDER_REVIEW' || next === 'REJECTED') {
+    requirePermission(session, 'results.approve')
+  } else if (next === 'PUBLISHED') requirePermission(session, 'results.publish')
   else if (next === 'LOCKED') requirePermission(session, 'results.lock')
   else requirePermission(session, 'results.update')
 }
@@ -244,7 +246,9 @@ export async function transitionAssessmentStatus(
     finalStatus === 'PUBLISHED' ||
     finalStatus === 'LOCKED' ||
     finalStatus === 'APPROVED' ||
-    finalStatus === 'SUBMITTED'
+    finalStatus === 'SUBMITTED' ||
+    finalStatus === 'UNDER_REVIEW' ||
+    finalStatus === 'REJECTED'
   ) {
     const marks = await queryAllCollection<Mark>('marks', {
       max: 2000,
@@ -266,7 +270,12 @@ export async function transitionAssessmentStatus(
     if (ops > 0) await batch.commit()
   }
 
-  if (finalStatus === 'SUBMITTED' || finalStatus === 'PUBLISHED') {
+  if (
+    finalStatus === 'SUBMITTED' ||
+    finalStatus === 'PUBLISHED' ||
+    finalStatus === 'UNDER_REVIEW' ||
+    finalStatus === 'REJECTED'
+  ) {
     void notifyAssessmentWorkflow(updated, finalStatus).catch((err) =>
       console.error('results notification failed', err),
     )
@@ -566,10 +575,14 @@ export async function submitClassSubjectMarks(
   }
   if (
     existing &&
-    (existing.status === 'PUBLISHED' || existing.status === 'APPROVED') &&
-    session.role === 'TEACHER'
+    session.role === 'TEACHER' &&
+    (existing.status === 'PUBLISHED' ||
+      existing.status === 'APPROVED' ||
+      existing.status === 'SUBMITTED' ||
+      existing.status === 'UNDER_REVIEW' ||
+      existing.status === 'LOCKED')
   ) {
-    throw forbidden('Published or approved results can only be changed by an admin')
+    throw forbidden('Submitted results are with admin. Wait until they are denied before editing.')
   }
 
   const status: MarkWorkflowStatus = input.action === 'submit' ? 'SUBMITTED' : 'DRAFT'
@@ -704,32 +717,41 @@ async function notifyAssessmentWorkflow(
   assessment: Assessment,
   status: MarkWorkflowStatus,
 ) {
-  const { notifyResultsSubmitted, notifyResultsReleased } = await import(
-    '@/server/services/notifications-service'
-  )
+  const {
+    notifyResultsSubmitted,
+    notifyResultsReleased,
+    notifyResultsUnderReview,
+    notifyResultsDenied,
+  } = await import('@/server/services/notifications-service')
   const [klass, subject] = await Promise.all([
     assessment.classId ? getDoc<SchoolClass>('classes', assessment.classId) : null,
     getDoc<Subject>('subjects', assessment.subjectId),
   ])
   const className = klass?.name || assessment.classId || 'Class'
   const subjectName = subject?.name || assessment.subjectId
+  const shared = {
+    assessmentId: assessment.id,
+    assessmentName: assessment.name,
+    className,
+    subjectName,
+  }
   if (status === 'SUBMITTED') {
     await notifyResultsSubmitted({
-      assessmentId: assessment.id,
-      assessmentName: assessment.name,
-      className,
-      subjectName,
+      ...shared,
       teacherName: assessment.enteredByName || 'A teacher',
     })
     return
   }
   if (status === 'PUBLISHED') {
-    await notifyResultsReleased({
-      assessmentId: assessment.id,
-      assessmentName: assessment.name,
-      className,
-      subjectName,
-    })
+    await notifyResultsReleased(shared)
+    return
+  }
+  if (status === 'UNDER_REVIEW') {
+    await notifyResultsUnderReview(shared)
+    return
+  }
+  if (status === 'REJECTED') {
+    await notifyResultsDenied(shared)
   }
 }
 

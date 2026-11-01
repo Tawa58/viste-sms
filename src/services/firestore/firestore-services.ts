@@ -536,7 +536,7 @@ export const firestoreCatalogService = {
   },
   async transitionAssessment(input: {
     assessmentId: string
-    status: 'SUBMITTED' | 'APPROVED' | 'PUBLISHED' | 'LOCKED'
+    status: 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'LOCKED'
     releaseToPortal?: boolean
   }) {
     const { apiCatalogService } = await import('@/services/api/server-api-services')

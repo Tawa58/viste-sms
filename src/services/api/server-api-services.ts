@@ -669,7 +669,7 @@ export const apiCatalogService = {
     }),
   transitionAssessment: (input: {
     assessmentId: string
-    status: 'SUBMITTED' | 'APPROVED' | 'PUBLISHED' | 'LOCKED'
+    status: 'SUBMITTED' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PUBLISHED' | 'LOCKED'
     releaseToPortal?: boolean
   }) =>
     apiFetch<Assessment>('/api/v1/results', {

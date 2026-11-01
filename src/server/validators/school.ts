@@ -471,7 +471,7 @@ export const gradingScaleSchema = z
 
 /** Allowed forward transitions for mark/assessment workflow. */
 export const resultTransitionSchema = z.object({
-  status: z.enum(['SUBMITTED', 'APPROVED', 'PUBLISHED', 'LOCKED']),
+  status: z.enum(['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'PUBLISHED', 'LOCKED']),
   /**
    * When true with APPROVED, also release to portal (PUBLISHED) in one admin action.
    */
