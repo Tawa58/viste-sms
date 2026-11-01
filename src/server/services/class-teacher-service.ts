@@ -7,7 +7,7 @@ import {
   assertIsClassTeacher,
   assertTeacherOwnsClass,
 } from '@/server/authorization/isolation'
-import { badRequest, notFound } from '@/server/errors'
+import { badRequest, forbidden, notFound } from '@/server/errors'
 import { getDoc, queryAllCollection, queryCollection, setDoc } from '@/server/repositories/firestore-repo'
 import type {
   classTeacherReportsUpsertSchema,
@@ -177,12 +177,29 @@ export async function getClassResultsSummary(
   input: { period: ClassResultsPeriod; termId?: string; month?: string },
 ): Promise<ClassResultsSummary> {
   requirePermission(session, 'results.read')
-  if (session.role === 'TEACHER') {
-    await assertTeacherOwnsClass(session, classId)
-  }
 
   const cls = await getDoc<SchoolClass>('classes', classId)
   if (!cls) throw notFound('Class not found')
+
+  let teacherSubjectIds: Set<string> | null = null
+  let teacherSeesAllSubjects = session.role !== 'TEACHER'
+  if (session.role === 'TEACHER') {
+    const { isClassTeacherOf, resolveTeacherSubjectIds } = await import(
+      '@/server/authorization/isolation'
+    )
+    try {
+      await assertTeacherOwnsClass(session, classId)
+    } catch {
+      teacherSubjectIds = new Set(await resolveTeacherSubjectIds(session))
+      const classSubjects = cls.subjectIds ?? []
+      const teachesThisClass = classSubjects.some((id) => teacherSubjectIds.has(id))
+      if (!teachesThisClass) throw forbidden('You are not assigned to this class')
+    }
+    teacherSeesAllSubjects = await isClassTeacherOf(session, classId)
+    if (!teacherSeesAllSubjects) {
+      teacherSubjectIds = teacherSubjectIds ?? new Set(await resolveTeacherSubjectIds(session))
+    }
+  }
 
   const where =
     input.period === 'MONTH'
@@ -201,6 +218,7 @@ export async function getClassResultsSummary(
         ? a.type === 'MONTHLY' || a.type === 'DAILY'
         : a.type === 'TERMLY',
     )
+    .filter((a) => teacherSeesAllSubjects || teacherSubjectIds?.has(a.subjectId))
 
   const [students, markLists, subjectDocs, scale] = await Promise.all([
     queryAllCollection<Student>('students', {

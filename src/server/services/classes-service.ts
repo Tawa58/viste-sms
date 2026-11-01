@@ -8,7 +8,7 @@ import {
   educationLevelName,
   getEducationLevel,
 } from '@/lib/education-levels'
-import { getDoc, newId, queryCollection, setDoc, deleteDoc } from '@/server/repositories/firestore-repo'
+import { getDoc, newId, queryAllCollection, queryCollection, setDoc, deleteDoc } from '@/server/repositories/firestore-repo'
 import type { ClassCreateInput, ClassUpdateInput } from '@/server/validators/school'
 import type { SchoolClass, Staff, Stream, Student, StudentClassStats } from '@/types'
 import {
@@ -30,7 +30,7 @@ function normalizeClass(row: SchoolClass): SchoolClass {
 
 export async function listClasses(session: SessionContext): Promise<ClassDto[]> {
   requirePermission(session, 'classes.read')
-  const rows = await queryCollection<SchoolClass>('classes', { limit: 100, orderBy: 'name' })
+  const rows = await queryAllCollection<SchoolClass>('classes', { max: 400, orderBy: 'name' })
   const normalized = rows.map(normalizeClass)
   if (session.role !== 'TEACHER') return normalized
 

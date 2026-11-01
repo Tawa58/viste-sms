@@ -857,10 +857,14 @@ function currentMonthValue() {
 }
 
 function StaffClassResultsPage() {
+  const { user } = useAuth()
+  const isTeacher = user?.role === 'TEACHER'
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [terms, setTerms] = useState<Term[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [classId, setClassId] = useState('')
+  const [subjectId, setSubjectId] = useState('')
   const [period, setPeriod] = useState<ClassResultsPeriod>('TERM')
   const [termId, setTermId] = useState('')
   const [month, setMonth] = useState(currentMonthValue())
@@ -874,16 +878,19 @@ function StaffClassResultsPage() {
 
   useEffect(() => {
     let mounted = true
-    void Promise.all([classService.list(), catalogService.getTerms()])
-      .then(([cls, t]) => {
+    void Promise.all([classService.list(), catalogService.getTerms(), catalogService.getSubjects()])
+      .then(([cls, t, subs]) => {
         if (!mounted) return
         const active = cls
           .filter((c) => (c.status ?? 'ACTIVE') === 'ACTIVE')
           .sort((a, b) => a.name.localeCompare(b.name))
         setClasses(active)
         setTerms(t)
+        const subjectList = [...subs].sort((a, b) => a.name.localeCompare(b.name))
+        setSubjects(subjectList)
         setTermId((prev) => prev || t.find((x) => x.sequence === 1)?.id || t[0]?.id || '')
         setClassId((prev) => prev || active[0]?.id || '')
+        setSubjectId((prev) => prev || (isTeacher ? subjectList[0]?.id || '' : ''))
       })
       .catch((err) => {
         console.error(err)
@@ -895,7 +902,7 @@ function StaffClassResultsPage() {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [isTeacher])
 
   useEffect(() => {
     if (!classId) {
@@ -971,6 +978,21 @@ function StaffClassResultsPage() {
 
   const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students])
   const selectedClass = classes.find((c) => c.id === classId)
+  const selectedSubject = subjects.find((s) => s.id === subjectId)
+  const visibleSubjects = useMemo(() => {
+    const allowed = new Set(subjects.map((s) => s.id))
+    const fromSummary = (summary?.subjects ?? []).filter(
+      (s) => allowed.size === 0 || allowed.has(s.id),
+    )
+    if (subjectId) {
+      const match = fromSummary.filter((s) => s.id === subjectId)
+      if (match.length) return match
+      if (selectedSubject) return [{ id: selectedSubject.id, name: selectedSubject.name }]
+      return []
+    }
+    return fromSummary
+  }, [summary, subjectId, selectedSubject, subjects])
+
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase()
     const list = students.filter((s) => {
@@ -982,21 +1004,40 @@ function StaffClassResultsPage() {
       )
     })
     const summaryByStudent = new Map((summary?.students ?? []).map((r) => [r.studentId, r]))
+    const scoreFor = (studentId: string) => {
+      const result = summaryByStudent.get(studentId)
+      if (!subjectId) return result?.average ?? null
+      return result?.subjects.find((s) => s.subjectId === subjectId)?.percent ?? null
+    }
     list.sort((a, b) => {
-      const ra = summaryByStudent.get(a.id)
-      const rb = summaryByStudent.get(b.id)
       if (sortBy === 'number') {
         return (a.studentNumber || '').localeCompare(b.studentNumber || '', undefined, {
           numeric: true,
         })
       }
       if (sortBy === 'average') {
-        return (rb?.average ?? -1) - (ra?.average ?? -1)
+        return (scoreFor(b.id) ?? -1) - (scoreFor(a.id) ?? -1)
       }
       return fullName(a).localeCompare(fullName(b))
     })
-    return list.map((s) => ({ student: s, result: summaryByStudent.get(s.id) }))
-  }, [students, summary, search, sortBy])
+    const ranked = [...list]
+      .map((s) => ({ id: s.id, score: scoreFor(s.id) }))
+      .filter((r) => r.score !== null)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    const positionById = new Map<string, number>()
+    ranked.forEach((r, i) => {
+      const prev = ranked[i - 1]
+      positionById.set(
+        r.id,
+        prev && prev.score === r.score ? (positionById.get(prev.id) ?? i) : i + 1,
+      )
+    })
+    return list.map((s) => ({
+      student: s,
+      result: summaryByStudent.get(s.id),
+      position: positionById.get(s.id),
+    }))
+  }, [students, summary, search, sortBy, subjectId])
 
   if (loadingClasses) return <LoadingState message="Loading classes…" />
 
@@ -1004,7 +1045,11 @@ function StaffClassResultsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Results"
-        description="Choose a class to review marks for every student, then open one report if you need the full sheet."
+        description={
+          isTeacher
+            ? 'Your assigned classes and subjects. Pick a class and the subject you want to review.'
+            : 'Choose a class and a subject to review marks, or leave subject as All to see the full class sheet.'
+        }
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Results' }]}
       />
 
@@ -1013,7 +1058,7 @@ function StaffClassResultsPage() {
           <CardTitle>Class results</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1.5">
               <Label>Class</Label>
               <Select
@@ -1024,6 +1069,17 @@ function StaffClassResultsPage() {
                 {classes.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Subject</Label>
+              <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
+                <option value="">All subjects</option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
                   </option>
                 ))}
               </Select>
@@ -1064,7 +1120,7 @@ function StaffClassResultsPage() {
               >
                 <option value="name">Name</option>
                 <option value="number">Student number</option>
-                <option value="average">Average</option>
+                <option value="average">{subjectId ? 'Mark' : 'Average'}</option>
               </Select>
             </div>
           </div>
@@ -1077,7 +1133,12 @@ function StaffClassResultsPage() {
             placeholder="Search this class by name or student number"
           />
 
-          {!classId ? (
+          {isTeacher && classes.length === 0 ? (
+            <Alert title="No teaching assignments" tone="warning">
+              Ask an admin to assign your classes and subjects on your staff record. Then you can
+              open Results by class and subject here.
+            </Alert>
+          ) : !classId ? (
             <p className="text-sm text-muted-foreground">Select a class to view results.</p>
           ) : loadingSummary ? (
             <p className="text-sm text-muted-foreground">Loading {selectedClass?.name} results…</p>
@@ -1089,12 +1150,14 @@ function StaffClassResultsPage() {
                     <th className="px-3 py-2">#</th>
                     <th className="px-3 py-2">Student number</th>
                     <th className="px-3 py-2">Name</th>
-                    {(summary?.subjects ?? []).map((subject) => (
-                      <th key={subject.id} className="px-3 py-2">
-                        {subject.name}
-                      </th>
-                    ))}
-                    <th className="px-3 py-2">Average</th>
+                    {subjectId
+                      ? null
+                      : visibleSubjects.map((subject) => (
+                          <th key={subject.id} className="px-3 py-2">
+                            {subject.name}
+                          </th>
+                        ))}
+                    <th className="px-3 py-2">{subjectId ? 'Mark' : 'Average'}</th>
                     <th className="px-3 py-2">Grade</th>
                     <th className="px-3 py-2">Pos</th>
                   </tr>
@@ -1104,16 +1167,17 @@ function StaffClassResultsPage() {
                     <tr>
                       <td
                         className="px-3 py-6 text-muted-foreground"
-                        colSpan={6 + (summary?.subjects.length ?? 0)}
+                        colSpan={subjectId ? 6 : 6 + visibleSubjects.length}
                       >
                         No students in this class match the search.
                       </td>
                     </tr>
                   ) : (
-                    rows.map(({ student, result }, index) => {
+                    rows.map(({ student, result, position }, index) => {
                       const subjectScore = new Map(
                         (result?.subjects ?? []).map((s) => [s.subjectId, s]),
                       )
+                      const focused = subjectId ? subjectScore.get(subjectId) : undefined
                       return (
                         <tr
                           key={student.id}
@@ -1127,21 +1191,29 @@ function StaffClassResultsPage() {
                             {student.studentNumber || '—'}
                           </td>
                           <td className="px-3 py-2 font-medium">{fullName(student)}</td>
-                          {(summary?.subjects ?? []).map((subject) => {
-                            const score = subjectScore.get(subject.id)
-                            return (
-                              <td key={subject.id} className="px-3 py-2">
-                                {score
-                                  ? `${score.score}/${score.maxScore} · ${score.grade}`
-                                  : '—'}
-                              </td>
-                            )
-                          })}
+                          {subjectId
+                            ? null
+                            : visibleSubjects.map((subject) => {
+                                const score = subjectScore.get(subject.id)
+                                return (
+                                  <td key={subject.id} className="px-3 py-2">
+                                    {score
+                                      ? `${score.score}/${score.maxScore} · ${score.grade}`
+                                      : '—'}
+                                  </td>
+                                )
+                              })}
                           <td className="px-3 py-2">
-                            {result?.average != null ? `${result.average}%` : '—'}
+                            {focused
+                              ? `${focused.score}/${focused.maxScore}`
+                              : result?.average != null
+                                ? `${result.average}%`
+                                : '—'}
                           </td>
-                          <td className="px-3 py-2 font-semibold">{result?.grade || '—'}</td>
-                          <td className="px-3 py-2">{result?.position ?? '—'}</td>
+                          <td className="px-3 py-2 font-semibold">
+                            {focused?.grade || result?.grade || '—'}
+                          </td>
+                          <td className="px-3 py-2">{position ?? '—'}</td>
                         </tr>
                       )
                     })
@@ -1152,8 +1224,9 @@ function StaffClassResultsPage() {
           )}
           {classId ? (
             <p className="text-xs text-muted-foreground">
-              {selectedClass?.name}: {rows.length} student(s). Click a row to open that student&apos;s
-              full results sheet.
+              {selectedClass?.name}
+              {selectedSubject ? ` · ${selectedSubject.name}` : ' · all subjects'}: {rows.length}{' '}
+              student(s). Click a row to open that student&apos;s full results sheet.
             </p>
           ) : null}
         </CardContent>
