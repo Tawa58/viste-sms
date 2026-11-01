@@ -23,6 +23,7 @@ import type {
   ClassResultsSummary,
   ClassTeacherReport,
   EcdChecklist,
+  EcdChecklistWrite,
   DutyRoster,
   DutyRosterEntry,
   Examination,
@@ -633,25 +634,7 @@ export const apiCatalogService = {
     apiFetch<EcdChecklist | null>(
       `/api/v1/ecd-checklists?studentId=${encodeURIComponent(studentId)}&termId=${encodeURIComponent(termId)}`,
     ),
-  upsertEcdChecklist: (input: {
-    studentId: string
-    classId: string
-    termId: string
-    academicYearId?: string
-    stage: 'ECD_A' | 'ECD_B'
-    status: 'DRAFT' | 'COMPLETED'
-    assessedAt: string
-    classTeacherName?: string
-    ageYears?: string
-    attendanceNote?: string
-    ratings: Record<string, 'A' | 'D' | 'NY' | 'NA'>
-    strengths?: string
-    improvements?: string
-    interventions?: string
-    comments?: string
-    overall?: EcdChecklist['overall']
-    signatures?: EcdChecklist['signatures']
-  }) =>
+  upsertEcdChecklist: (input: EcdChecklistWrite) =>
     apiFetch<EcdChecklist>('/api/v1/ecd-checklists', {
       method: 'PUT',
       body: JSON.stringify(input),

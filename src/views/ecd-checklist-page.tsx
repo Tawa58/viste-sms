@@ -28,6 +28,7 @@ import type {
   AcademicYear,
   EcdChecklist,
   EcdChecklistSignature,
+  EcdChecklistWrite,
   EcdOverallProgress,
   SchoolClass,
   Staff,
@@ -386,7 +387,7 @@ function EcdChecklistForm({
             comments,
             overall: overall || undefined,
             signatures,
-          }),
+          } satisfies EcdChecklistWrite),
         {
           loading: status === 'COMPLETED' ? 'Saving completed checklist…' : 'Saving draft…',
           success:

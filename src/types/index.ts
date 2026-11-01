@@ -1385,6 +1385,9 @@ export interface EcdChecklist {
   updatedBy: string
 }
 
+/** Payload for creating or updating a checklist; the server assigns id and timestamps. */
+export type EcdChecklistWrite = Omit<EcdChecklist, 'id' | 'updatedAt' | 'updatedBy'>
+
 /** Everything the student portal shows, scoped server-side to the signed-in student. */
 export interface StudentPortalBundle {
   generatedAt: string

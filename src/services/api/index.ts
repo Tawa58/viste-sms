@@ -46,6 +46,7 @@ import type {
   AuthUser,
   ClassTimetable,
   EcdChecklist,
+  EcdChecklistWrite,
   Examination,
   FeeStructure,
   Guardian,
@@ -814,9 +815,7 @@ const mockCatalogService = {
     mockRequest(
       ecdChecklists.find((r) => r.studentId === studentId && r.termId === termId) ?? null,
     ),
-  upsertEcdChecklist: async (input: Omit<EcdChecklist, 'id' | 'updatedAt' | 'updatedBy'> & {
-    id?: string
-  }) => {
+  upsertEcdChecklist: async (input: EcdChecklistWrite) => {
     const id = `ecdchk_${input.studentId}_${input.termId}`.replace(/[^a-zA-Z0-9_-]/g, '_')
     const row: EcdChecklist = {
       ...input,
