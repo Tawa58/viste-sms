@@ -190,9 +190,10 @@ export async function getClassResultsSummary(
     try {
       await assertTeacherOwnsClass(session, classId)
     } catch {
-      teacherSubjectIds = new Set(await resolveTeacherSubjectIds(session))
+      const assignedSubjects = new Set(await resolveTeacherSubjectIds(session))
+      teacherSubjectIds = assignedSubjects
       const classSubjects = cls.subjectIds ?? []
-      const teachesThisClass = classSubjects.some((id) => teacherSubjectIds.has(id))
+      const teachesThisClass = classSubjects.some((id) => assignedSubjects.has(id))
       if (!teachesThisClass) throw forbidden('You are not assigned to this class')
     }
     teacherSeesAllSubjects = await isClassTeacherOf(session, classId)
