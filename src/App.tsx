@@ -81,6 +81,7 @@ const SportsPage = lazyPage(() => import('@/views/extracurricular-page'), 'Sport
 const ClubsPage = lazyPage(() => import('@/views/extracurricular-page'), 'ClubsPage')
 const AttendancePage = lazyPage(() => import('@/views/attendance-page'), 'AttendancePage')
 const ExaminationsPage = lazyPage(() => import('@/views/exams-results-page'), 'ExaminationsPage')
+const EcdChecklistPage = lazyPage(() => import('@/views/ecd-checklist-page'), 'EcdChecklistPage')
 const ResultsPage = lazyPage(() => import('@/views/exams-results-page'), 'ResultsPage')
 const ApprovalsPage = lazyPage(() => import('@/views/exams-results-page'), 'ApprovalsPage')
 const FeesPage = lazyPage(() => import('@/views/fees-page'), 'FeesPage')
@@ -205,6 +206,7 @@ export default function App() {
                 <Route path="/clubs" element={<ClubsPage />} />
                 <Route path="/attendance" element={<AttendancePage />} />
                 <Route path="/examinations" element={<ExaminationsPage />} />
+                <Route path="/ecd-checklist" element={<EcdChecklistPage />} />
                 <Route path="/results" element={<ResultsPage />} />
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route path="/fees" element={<FeesPage />} />

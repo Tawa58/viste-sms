@@ -613,3 +613,44 @@ export type HouseCreateInput = z.infer<typeof houseCreateSchema>
 export type ExemptionCreateInput = z.infer<typeof exemptionCreateSchema>
 export type ScholarshipCreateInput = z.infer<typeof scholarshipCreateSchema>
 export type TransferStudentInput = z.infer<typeof transferStudentSchema>
+
+export const ecdRatingSchema = z.enum(['A', 'D', 'NY', 'NA'])
+export const ecdOverallSchema = z.enum([
+  'EXCELLENT',
+  'GOOD',
+  'SATISFACTORY',
+  'ADDITIONAL_SUPPORT',
+  'INDIVIDUALISED',
+])
+export const ecdSignatureSchema = z.object({
+  name: z.string().max(120).optional().or(z.literal('')),
+  date: z.string().max(20).optional().or(z.literal('')),
+})
+
+export const ecdChecklistUpsertSchema = z.object({
+  studentId: idSchema,
+  classId: idSchema,
+  termId: idSchema,
+  academicYearId: z.string().max(80).optional(),
+  stage: z.enum(['ECD_A', 'ECD_B']),
+  status: z.enum(['DRAFT', 'COMPLETED']).default('DRAFT'),
+  assessedAt: isoDateSchema,
+  classTeacherName: z.string().max(120).optional().or(z.literal('')),
+  ageYears: z.string().max(20).optional().or(z.literal('')),
+  attendanceNote: z.string().max(200).optional().or(z.literal('')),
+  ratings: z.record(z.string(), ecdRatingSchema).default({}),
+  strengths: z.string().max(4000).optional().or(z.literal('')),
+  improvements: z.string().max(4000).optional().or(z.literal('')),
+  interventions: z.string().max(4000).optional().or(z.literal('')),
+  comments: z.string().max(4000).optional().or(z.literal('')),
+  overall: ecdOverallSchema.optional(),
+  signatures: z
+    .object({
+      classTeacher: ecdSignatureSchema.optional(),
+      ecdCoordinator: ecdSignatureSchema.optional(),
+      principal: ecdSignatureSchema.optional(),
+      parentGuardian: ecdSignatureSchema.optional(),
+    })
+    .optional(),
+})
+export type EcdChecklistUpsertInput = z.infer<typeof ecdChecklistUpsertSchema>

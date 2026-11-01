@@ -1341,6 +1341,50 @@ export interface StudentResultPeriod {
   classTeacherComment?: string
 }
 
+export type EcdRatingMark = 'A' | 'D' | 'NY' | 'NA'
+export type EcdStage = 'ECD_A' | 'ECD_B'
+export type EcdChecklistStatus = 'DRAFT' | 'COMPLETED'
+export type EcdOverallProgress =
+  | 'EXCELLENT'
+  | 'GOOD'
+  | 'SATISFACTORY'
+  | 'ADDITIONAL_SUPPORT'
+  | 'INDIVIDUALISED'
+
+export type EcdChecklistSignature = {
+  name: string
+  date: string
+}
+
+/** Official VISTE ECD A/B learner development monitoring instrument. */
+export interface EcdChecklist {
+  id: string
+  studentId: string
+  classId: string
+  termId: string
+  academicYearId?: string
+  stage: EcdStage
+  status: EcdChecklistStatus
+  assessedAt: string
+  classTeacherName: string
+  ageYears?: string
+  attendanceNote?: string
+  ratings: Record<string, EcdRatingMark>
+  strengths?: string
+  improvements?: string
+  interventions?: string
+  comments?: string
+  overall?: EcdOverallProgress
+  signatures: {
+    classTeacher?: EcdChecklistSignature
+    ecdCoordinator?: EcdChecklistSignature
+    principal?: EcdChecklistSignature
+    parentGuardian?: EcdChecklistSignature
+  }
+  updatedAt: string
+  updatedBy: string
+}
+
 /** Everything the student portal shows, scoped server-side to the signed-in student. */
 export interface StudentPortalBundle {
   generatedAt: string
@@ -1350,6 +1394,8 @@ export interface StudentPortalBundle {
   subjects: StudentPortalSubject[]
   attendance: StudentPortalAttendance
   results: ResultPortalView
+  /** Completed ECD A/B development checklist for the current term, when applicable. */
+  ecdChecklist?: EcdChecklist | null
   /** Published results grouped for the results sheet; empty while locked by fees. */
   resultPeriods: StudentResultPeriod[]
   fees: StudentPortalFees

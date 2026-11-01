@@ -34,6 +34,7 @@ import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/contexts/auth-context'
 import { EDUCATION_LEVELS, educationLevelName } from '@/lib/education-levels'
+import { isEcdEducationLevel } from '@/lib/ecd-checklist'
 import { notify } from '@/lib/notify'
 import { canManageClasses, canManageStudents } from '@/lib/roles'
 import { catalogService, classService, studentService } from '@/services/api'
@@ -270,6 +271,11 @@ export function ClassDetailPage() {
                   <ClipboardList className="h-4 w-4" />
                   Mark register
                 </Link>
+              </Button>
+            ) : null}
+            {isEcdEducationLevel(cls.educationLevelId) || /\becd\b/i.test(cls.name) ? (
+              <Button variant="outline" asChild>
+                <Link to={`/ecd-checklist?classId=${cls.id}`}>ECD checklist</Link>
               </Button>
             ) : null}
             {canStudents ? (

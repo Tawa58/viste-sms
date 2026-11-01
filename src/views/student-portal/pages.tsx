@@ -44,6 +44,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select } from '@/components/ui/select'
 import { useAuth } from '@/contexts/auth-context'
 import { notify } from '@/lib/notify'
+import { EcdResultsSheet } from '@/components/shared/ecd-checklist-ticks'
 import { downloadResultSheetPdf, formatMark, formatPercent } from '@/lib/result-sheet-pdf'
 import { cn } from '@/lib/utils'
 import { fileService } from '@/services/files'
@@ -378,7 +379,7 @@ function ResultSheet({ data, period }: { data: StudentPortalBundle; period: Stud
 }
 
 function ResultsBody({ data }: { data: StudentPortalBundle }) {
-  const { results, resultPeriods } = data
+  const { results, resultPeriods, ecdChecklist, profile, term } = data
   const available = PERIOD_KINDS.filter((k) => resultPeriods.some((p) => p.kind === k.kind))
   const [kind, setKind] = useState<StudentResultPeriodKind>(available[0]?.kind ?? 'TERM')
   const options = resultPeriods.filter((p) => p.kind === kind)
@@ -401,6 +402,17 @@ function ResultsBody({ data }: { data: StudentPortalBundle }) {
     } finally {
       setDownloading(false)
     }
+  }
+
+  if (ecdChecklist) {
+    return (
+      <EcdResultsSheet
+        sheet={ecdChecklist}
+        learnerName={`${profile.firstName} ${profile.lastName}`.trim()}
+        className={profile.className}
+        termName={term?.name}
+      />
+    )
   }
 
   if (results.accessState === 'RESULTS_LOCKED_FEES') {

@@ -2,6 +2,7 @@ import 'server-only'
 
 import { getAdminDb } from '@/lib/firebase/admin'
 import { educationLevelName } from '@/lib/education-levels'
+import { isEcdClass, isEcdEducationLevel } from '@/lib/ecd-checklist'
 import type { SessionContext } from '@/server/auth/session'
 import { getStudentOrThrow } from '@/server/authorization/isolation'
 import { forbidden } from '@/server/errors'
@@ -18,6 +19,7 @@ import type {
   AttendanceRecord,
   ClassTeacherReport,
   ClubActivity,
+  EcdChecklist,
   GradingScale,
   Guardian,
   House,
@@ -612,6 +614,14 @@ export async function getStudentPortalBundle(session: SessionContext): Promise<S
     subjects,
     attendance,
     results,
+    ecdChecklist: await (async () => {
+      if (!term || (!isEcdEducationLevel(levelId) && !isEcdClass(klass ?? {}))) return null
+      const row = await getOne<EcdChecklist>(
+        'ecdChecklists',
+        `ecdchk_${student.id}_${term.id}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
+      )
+      return row?.status === 'COMPLETED' ? row : null
+    })(),
     resultPeriods,
     fees,
     exams: academics ? buildExams(academics, resultsOpen) : [],

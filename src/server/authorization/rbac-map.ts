@@ -284,6 +284,7 @@ export const PATH_PERMISSION: Record<string, Permission | null> = {
   '/clubs': 'extracurricular.read',
   '/attendance': 'attendance.read',
   '/examinations': 'results.read',
+  '/ecd-checklist': 'results.read',
   '/results': 'results.read',
   '/approvals': 'results.approve',
   '/fees': 'fees.read',

@@ -15,6 +15,8 @@ export type EducationLevelDefinition = {
 
 export const EDUCATION_LEVELS: readonly EducationLevelDefinition[] = [
   { id: 'ecd', name: 'ECD', band: 'ECD', sequence: 0 },
+  { id: 'ecd-a', name: 'ECD A', band: 'ECD', sequence: 0 },
+  { id: 'ecd-b', name: 'ECD B', band: 'ECD', sequence: 0 },
   { id: 'grade-1', name: 'Grade 1', band: 'PRIMARY', sequence: 1 },
   { id: 'grade-2', name: 'Grade 2', band: 'PRIMARY', sequence: 2 },
   { id: 'grade-3', name: 'Grade 3', band: 'PRIMARY', sequence: 3 },
@@ -52,7 +54,7 @@ export function gradingTrackForLevel(
   const id = (
     resolveEducationLevelId(educationLevelId) ?? educationLevelId ?? ''
   ).toLowerCase()
-  if (id === 'ecd') return 'ECD'
+  if (id === 'ecd' || id.startsWith('ecd-') || id.startsWith('ecd ')) return 'ECD'
   if (/^grade-[1-7]$/.test(id)) return 'PRIMARY'
   if (id === 'form-5' || id === 'form-6') return 'FORM_5_6'
   // Form 1–4 and any other secondary default to the Form 1–4 scheme.

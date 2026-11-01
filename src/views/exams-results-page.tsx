@@ -19,6 +19,8 @@ import {
   isUnitsScale,
 } from '@/lib/grading'
 import { gradingTrackForLevel } from '@/lib/education-levels'
+import { EcdResultsSheet } from '@/components/shared/ecd-checklist-ticks'
+import { isEcdClass, summariseEcdRatings } from '@/lib/ecd-checklist'
 import { catalogService, classService, studentService } from '@/services/api'
 import { notify } from '@/lib/notify'
 import { fullName } from '@/lib/utils'
@@ -29,6 +31,7 @@ import type {
   GradingScalesBundle,
   Mark,
   MarkCommentMode,
+  EcdChecklist,
   ResultPortalView,
   SchoolClass,
   Staff,
@@ -985,15 +988,24 @@ export function ResultsPage() {
   const isStudent = user?.role === 'STUDENT'
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<ResultPortalView | null>(null)
+  const [ecdSheet, setEcdSheet] = useState<EcdChecklist | null>(null)
 
   useEffect(() => {
     let mounted = true
     void (async () => {
       try {
         if (isStudent && user?.studentId) {
-          const portal = await catalogService.getResultPortal(user.studentId)
+          const [portal, terms] = await Promise.all([
+            catalogService.getResultPortal(user.studentId),
+            catalogService.getTerms().catch(() => [] as Term[]),
+          ])
+          const termId = terms[0]?.id
+          const sheet = termId
+            ? await catalogService.getEcdChecklist(user.studentId, termId).catch(() => null)
+            : null
           if (!mounted) return
           setView(portal)
+          setEcdSheet(sheet && sheet.status === 'COMPLETED' ? sheet : null)
         }
       } catch (err) {
         console.error(err)
@@ -1016,7 +1028,14 @@ export function ResultsPage() {
           description="Monthly progress, end-of-term results, and teacher comments."
           breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Results' }]}
         />
-        {view ? (
+        {ecdSheet ? (
+          <EcdResultsSheet
+            sheet={ecdSheet}
+            learnerName={view?.studentName || user?.name || 'Learner'}
+            className={view?.className}
+            termName={view?.term}
+          />
+        ) : view ? (
           <StudentProgressCard view={view} />
         ) : (
           <Alert title="No results yet" tone="info">
@@ -1054,6 +1073,11 @@ function StaffClassResultsPage() {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [selectedId, setSelectedId] = useState('')
   const [view, setView] = useState<ResultPortalView | null>(null)
+  const [ecdRows, setEcdRows] = useState<EcdChecklist[]>([])
+  const [ecdSheet, setEcdSheet] = useState<EcdChecklist | null>(null)
+  const [loadingEcd, setLoadingEcd] = useState(false)
+  const selectedClass = classes.find((c) => c.id === classId)
+  const ecdMode = Boolean(selectedClass && isEcdClass(selectedClass))
 
   useEffect(() => {
     let mounted = true
@@ -1104,7 +1128,11 @@ function StaffClassResultsPage() {
   }, [classId])
 
   useEffect(() => {
-    if (!classId) return
+    if (!classId || ecdMode) {
+      setSummary(null)
+      setLoadingSummary(false)
+      return
+    }
     if (period === 'TERM' && !termId) return
     if (period === 'MONTH' && !month) return
     let cancelled = false
@@ -1127,20 +1155,64 @@ function StaffClassResultsPage() {
     return () => {
       cancelled = true
     }
-  }, [classId, period, termId, month])
+  }, [classId, period, termId, month, ecdMode])
+
+  useEffect(() => {
+    if (!ecdMode || !classId || !termId) {
+      setEcdRows([])
+      return
+    }
+    let cancelled = false
+    setLoadingEcd(true)
+    void catalogService
+      .listEcdChecklists(classId, termId)
+      .then((list) => {
+        if (!cancelled) setEcdRows(list)
+      })
+      .catch((err) => {
+        console.error(err)
+        if (!cancelled) setEcdRows([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingEcd(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ecdMode, classId, termId])
 
   useEffect(() => {
     setSelectedId('')
     setView(null)
+    setEcdSheet(null)
     setSearch('')
   }, [classId])
 
   useEffect(() => {
     if (!selectedId) {
       setView(null)
+      setEcdSheet(null)
       return
     }
     let cancelled = false
+    if (ecdMode) {
+      if (!termId) return
+      void catalogService
+        .getEcdChecklist(selectedId, termId)
+        .then((sheet) => {
+          if (!cancelled) setEcdSheet(sheet)
+        })
+        .catch((err) => {
+          console.error(err)
+          if (!cancelled) {
+            setEcdSheet(null)
+            notify.error('Could not load this learner’s ECD checklist')
+          }
+        })
+      return () => {
+        cancelled = true
+      }
+    }
     void catalogService
       .getResultPortal(selectedId)
       .then((portal) => {
@@ -1153,11 +1225,11 @@ function StaffClassResultsPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedId])
+  }, [selectedId, ecdMode, termId])
 
   const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students])
-  const selectedClass = classes.find((c) => c.id === classId)
   const selectedSubject = subjects.find((s) => s.id === subjectId)
+  const ecdByStudent = useMemo(() => new Map(ecdRows.map((r) => [r.studentId, r])), [ecdRows])
   const visibleSubjects = useMemo(() => {
     const allowed = new Set(subjects.map((s) => s.id))
     const fromSummary = (summary?.subjects ?? []).filter(
@@ -1225,16 +1297,18 @@ function StaffClassResultsPage() {
       <PageHeader
         title="Results"
         description={
-          isTeacher
-            ? 'Your assigned classes and subjects. Pick a class and the subject you want to review.'
-            : 'Choose a class and a subject to review marks, or leave subject as All to see the full class sheet.'
+          ecdMode
+            ? 'ECD results use the learner development checklist. Open a child to see ticks for each skill.'
+            : isTeacher
+              ? 'Your assigned classes and subjects. Pick a class and the subject you want to review.'
+              : 'Choose a class and a subject to review marks, or leave subject as All to see the full class sheet.'
         }
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Results' }]}
       />
 
       <Card>
         <CardHeader>
-          <CardTitle>Class results</CardTitle>
+          <CardTitle>{ecdMode ? 'ECD development results' : 'Class results'}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -1252,6 +1326,7 @@ function StaffClassResultsPage() {
                 ))}
               </Select>
             </div>
+            {ecdMode ? null : (
             <div className="space-y-1.5">
               <Label>Subject</Label>
               <Select value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
@@ -1263,11 +1338,13 @@ function StaffClassResultsPage() {
                 ))}
               </Select>
             </div>
+            )}
             <div className="space-y-1.5">
               <Label>Period</Label>
               <Select
-                value={period}
+                value={ecdMode ? 'TERM' : period}
                 onChange={(e) => setPeriod(e.target.value as ClassResultsPeriod)}
+                disabled={ecdMode}
               >
                 <option value="TERM">End of term</option>
                 <option value="MONTH">Monthly</option>
@@ -1319,6 +1396,67 @@ function StaffClassResultsPage() {
             </Alert>
           ) : !classId ? (
             <p className="text-sm text-muted-foreground">Select a class to view results.</p>
+          ) : ecdMode && loadingEcd ? (
+            <p className="text-sm text-muted-foreground">Loading ECD checklists…</p>
+          ) : ecdMode ? (
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="bg-muted/60 text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">#</th>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2 text-center">✓ A</th>
+                    <th className="px-3 py-2 text-center">✓ D</th>
+                    <th className="px-3 py-2 text-center">✓ NY</th>
+                    <th className="px-3 py-2">Overall</th>
+                    <th className="px-3 py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-6 text-muted-foreground" colSpan={7}>
+                        No learners in this class match the search.
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map(({ student }, index) => {
+                      const sheet = ecdByStudent.get(student.id)
+                      const summaryTicks = sheet ? summariseEcdRatings(sheet.ratings) : null
+                      return (
+                        <tr
+                          key={student.id}
+                          className={`cursor-pointer border-t border-border ${
+                            selectedId === student.id ? 'bg-primary/5' : 'hover:bg-muted/40'
+                          }`}
+                          onClick={() => setSelectedId(student.id)}
+                        >
+                          <td className="px-3 py-2 text-muted-foreground">{index + 1}</td>
+                          <td className="px-3 py-2 font-medium">{fullName(student)}</td>
+                          <td className="px-3 py-2 text-center font-semibold">
+                            {summaryTicks ? summaryTicks.A : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-center font-semibold">
+                            {summaryTicks ? summaryTicks.D : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-center font-semibold">
+                            {summaryTicks ? summaryTicks.NY : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-sm">
+                            {sheet?.overall
+                              ? sheet.overall.replaceAll('_', ' ').toLowerCase()
+                              : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {sheet ? (sheet.status === 'COMPLETED' ? 'Completed' : 'Draft') : 'Not started'}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           ) : loadingSummary ? (
             <p className="text-sm text-muted-foreground">Loading {selectedClass?.name} results…</p>
           ) : (
@@ -1411,7 +1549,20 @@ function StaffClassResultsPage() {
         </CardContent>
       </Card>
 
-      {selectedId && view ? (
+      {ecdMode && selectedId && ecdSheet ? (
+        <EcdResultsSheet
+          sheet={ecdSheet}
+          learnerName={
+            studentById.get(selectedId) ? fullName(studentById.get(selectedId)!) : 'Learner'
+          }
+          className={selectedClass?.name}
+          termName={terms.find((t) => t.id === termId)?.name}
+        />
+      ) : ecdMode && selectedId && !ecdSheet ? (
+        <Alert title="No checklist for this term yet" tone="info">
+          Open ECD checklist to tick this learner’s skills for the selected term.
+        </Alert>
+      ) : selectedId && view ? (
         <StudentProgressCard view={view} />
       ) : selectedId && !view ? (
         <p className="text-sm text-muted-foreground">

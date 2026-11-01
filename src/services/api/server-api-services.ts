@@ -22,6 +22,7 @@ import type {
   ClassResultsPeriod,
   ClassResultsSummary,
   ClassTeacherReport,
+  EcdChecklist,
   DutyRoster,
   DutyRosterEntry,
   Examination,
@@ -624,6 +625,37 @@ export const apiCatalogService = {
     ),
   getPendingApprovalsCount: () =>
     apiFetch<{ count: number }>('/api/v1/results?kind=pending-count', { cacheTtlMs: 60_000 }),
+  listEcdChecklists: (classId: string, termId: string) =>
+    apiFetch<EcdChecklist[]>(
+      `/api/v1/ecd-checklists?classId=${encodeURIComponent(classId)}&termId=${encodeURIComponent(termId)}`,
+    ),
+  getEcdChecklist: (studentId: string, termId: string) =>
+    apiFetch<EcdChecklist | null>(
+      `/api/v1/ecd-checklists?studentId=${encodeURIComponent(studentId)}&termId=${encodeURIComponent(termId)}`,
+    ),
+  upsertEcdChecklist: (input: {
+    studentId: string
+    classId: string
+    termId: string
+    academicYearId?: string
+    stage: 'ECD_A' | 'ECD_B'
+    status: 'DRAFT' | 'COMPLETED'
+    assessedAt: string
+    classTeacherName?: string
+    ageYears?: string
+    attendanceNote?: string
+    ratings: Record<string, 'A' | 'D' | 'NY' | 'NA'>
+    strengths?: string
+    improvements?: string
+    interventions?: string
+    comments?: string
+    overall?: EcdChecklist['overall']
+    signatures?: EcdChecklist['signatures']
+  }) =>
+    apiFetch<EcdChecklist>('/api/v1/ecd-checklists', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
   getMarks: (assessmentId?: string, studentId?: string) => {
     const params = new URLSearchParams({ kind: 'marks' })
     if (assessmentId) params.set('assessmentId', assessmentId)

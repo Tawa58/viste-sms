@@ -45,6 +45,7 @@ import type {
   AuditLog,
   AuthUser,
   ClassTimetable,
+  EcdChecklist,
   Examination,
   FeeStructure,
   Guardian,
@@ -519,6 +520,8 @@ export const dashboardService: DashboardService = USE_MOCK_API
     ? apiDashboardService
     : firestoreDashboardService
 
+const ecdChecklists: EcdChecklist[] = []
+
 const mockCatalogService = {
   getYears: (): Promise<AcademicYear[]> => mockRequest(academicYears),
   getTerms: (): Promise<Term[]> => mockRequest(terms),
@@ -805,6 +808,29 @@ const mockCatalogService = {
         ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'].includes(a.status),
       ).length,
     }),
+  listEcdChecklists: (classId: string, termId: string) =>
+    mockRequest(ecdChecklists.filter((r) => r.classId === classId && r.termId === termId)),
+  getEcdChecklist: (studentId: string, termId: string) =>
+    mockRequest(
+      ecdChecklists.find((r) => r.studentId === studentId && r.termId === termId) ?? null,
+    ),
+  upsertEcdChecklist: async (input: Omit<EcdChecklist, 'id' | 'updatedAt' | 'updatedBy'> & {
+    id?: string
+  }) => {
+    const id = `ecdchk_${input.studentId}_${input.termId}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const row: EcdChecklist = {
+      ...input,
+      id,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'mock',
+      signatures: input.signatures ?? {},
+      ratings: input.ratings ?? {},
+    }
+    const idx = ecdChecklists.findIndex((r) => r.id === id)
+    if (idx >= 0) ecdChecklists[idx] = row
+    else ecdChecklists.push(row)
+    return mockRequest(row)
+  },
   getMarks: (assessmentId?: string, studentId?: string): Promise<Mark[]> =>
     mockRequest(
       marks.filter(

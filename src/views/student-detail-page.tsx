@@ -423,7 +423,12 @@ export function StudentDetailPage() {
     )
   }
 
-  const cls = classes.find((c) => c.id === student.classId)?.name ?? '—'
+  const studentClass = classes.find((c) => c.id === student.classId)
+  const cls = studentClass?.name ?? '—'
+  const showEcdChecklist =
+    /\becd\b/i.test(studentClass?.name ?? '') ||
+    /\becd\b/i.test(studentClass?.educationLevelId ?? '') ||
+    /\becd\b/i.test(studentClass?.level ?? '')
   const present = attendance.filter((a) => a.status === 'PRESENT' || a.status === 'LATE').length
   const attendancePct = attendance.length
     ? Math.round((present / attendance.length) * 100)
@@ -500,6 +505,15 @@ export function StudentDetailPage() {
                   Delete
                 </Button>
               </>
+            ) : null}
+            {showEcdChecklist ? (
+              <Button variant="outline" asChild>
+                <Link
+                  to={`/ecd-checklist?classId=${student.classId}&studentId=${student.id}`}
+                >
+                  ECD checklist
+                </Link>
+              </Button>
             ) : null}
             <Button variant="outline" asChild>
               <Link to="/students">Back</Link>
