@@ -53,10 +53,12 @@ function SidebarNav({
   collapsed,
   groups,
   onLogout,
+  approvalsCount = 0,
 }: {
   collapsed: boolean
   groups: NavGroup[]
   onLogout?: () => void
+  approvalsCount?: number
 }) {
   return (
     <nav className="flex-1 space-y-5 overflow-y-auto px-2 pb-4">
@@ -82,24 +84,40 @@ function SidebarNav({
                       collapsed && 'justify-center px-2',
                     )
                   }
-                  title={item.label}
+                  title={
+                    item.badge === 'approvals' && approvalsCount > 0
+                      ? `${item.label} (${approvalsCount})`
+                      : item.label
+                  }
                 >
                   {({ isActive }) => (
                     <>
                       {isActive && (
                         <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-primary" />
                       )}
-                      <Icon
-                        className={cn(
-                          'h-4 w-4 shrink-0 transition-colors',
-                          isActive
-                            ? 'text-primary dark:text-primary'
-                            : 'text-accent group-hover:text-primary dark:text-accent',
-                        )}
-                      />
+                      <span className="relative shrink-0">
+                        <Icon
+                          className={cn(
+                            'h-4 w-4 transition-colors',
+                            isActive
+                              ? 'text-primary dark:text-primary'
+                              : 'text-accent group-hover:text-primary dark:text-accent',
+                          )}
+                        />
+                        {collapsed && item.badge === 'approvals' && approvalsCount > 0 ? (
+                          <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-bold text-destructive-foreground">
+                            {approvalsCount > 99 ? '99+' : approvalsCount}
+                          </span>
+                        ) : null}
+                      </span>
                       {!collapsed && (
                         <span className="truncate text-black dark:text-inherit">{item.label}</span>
                       )}
+                      {!collapsed && item.badge === 'approvals' && approvalsCount > 0 ? (
+                        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-destructive-foreground">
+                          {approvalsCount > 99 ? '99+' : approvalsCount}
+                        </span>
+                      ) : null}
                     </>
                   )}
                 </NavLink>
@@ -127,7 +145,7 @@ function SidebarNav({
 }
 
 export function AppShell() {
-  const { user, permissions, logout } = useAuth()
+  const { user, permissions, logout, hasPermission } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
@@ -138,6 +156,8 @@ export function AppShell() {
   const canSeeAdminNotifications = isAdminNotificationsRole(user?.role)
   const isStudent = user?.role === 'STUDENT'
   const unreadCount = notifications.filter((n) => !n.read).length
+  const [approvalsCount, setApprovalsCount] = useState(0)
+  const canSeeApprovals = hasPermission('results.approve')
 
   const roleNav = useMemo(
     () => (user ? getNavGroupsForRole(user.role, permissions) : []),
@@ -162,8 +182,8 @@ export function AppShell() {
     let failStreak = 0
     let timer: number | undefined
 
-    const BASE_MS = 60_000
-    const MAX_MS = 5 * 60_000
+    const BASE_MS = 180_000
+    const MAX_MS = 10 * 60_000
 
     function schedule(delayMs: number) {
       if (timer !== undefined) window.clearTimeout(timer)
@@ -218,6 +238,42 @@ export function AppShell() {
       window.removeEventListener('online', onOnline)
     }
   }, [canSeeAdminNotifications])
+
+  useEffect(() => {
+    if (!canSeeApprovals) {
+      setApprovalsCount(0)
+      return
+    }
+    let cancelled = false
+    let timer: number | undefined
+
+    async function load() {
+      try {
+        const { count } = await catalogService.getPendingApprovalsCount()
+        if (!cancelled) setApprovalsCount(count)
+      } catch {
+        // Keep the last known count through network blips.
+      }
+    }
+
+    void load()
+    timer = window.setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+        void load()
+      }
+    }, 120_000)
+
+    function onVisible() {
+      if (document.visibilityState === 'visible') void load()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [canSeeApprovals, location.pathname])
 
   async function handleNotificationClick(item: AppNotification) {
     try {
@@ -297,6 +353,7 @@ export function AppShell() {
           collapsed={collapsed}
           groups={roleNav}
           onLogout={isStudent ? () => setLogoutOpen(true) : undefined}
+          approvalsCount={approvalsCount}
         />
         <div className="mt-auto border-t border-sidebar-border p-3">
           <div
@@ -391,6 +448,7 @@ export function AppShell() {
                       }
                     : undefined
                 }
+                approvalsCount={approvalsCount}
               />
               <div className="border-t border-sidebar-border p-3">
                 <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-card p-2.5 shadow-card">

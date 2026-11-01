@@ -63,8 +63,8 @@ export async function prefetchRestSchoolData(): Promise<void> {
 }
 
 /**
- * Warm catalog/dashboard only. Full student/fee/attendance dumps were
- * burning Firestore quota on every login and blocking sign-in.
+ * Warm catalog + announcements only. Dashboard and full collection dumps
+ * were burning Firestore quota on every login.
  */
 export function prefetchSchoolData(): void {
   void prefetchCriticalSchoolData()

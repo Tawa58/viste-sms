@@ -2,7 +2,6 @@ import { requireSession } from '@/server/auth/session'
 import { jsonOk, withApiHandler } from '@/server/http/handler'
 import {
   getCatalogSnapshot,
-  getDashboardBundle,
   listAnnouncementsService,
 } from '@/server/services/catalog-service'
 import { listStudents } from '@/server/services/students-service'
@@ -62,34 +61,6 @@ export const GET = withApiHandler(async (request) => {
       },
     )
     put('announcements', true, () => listAnnouncementsService(session))
-    put('dashboard', hasPermission(session.role, 'students.read'), async () => {
-      const { stats, recentPayments } = await getDashboardBundle(session)
-      return {
-        stats,
-        enrollment: [{ month: 'Now', students: stats.totalStudents }],
-        attendanceOverview: [
-          { name: 'Attendance %', value: stats.todayAttendancePct },
-          { name: 'Remainder', value: Math.max(0, 100 - stats.todayAttendancePct) },
-        ],
-        feeCollection: [
-          {
-            month: 'YTD',
-            collected: stats.feesCollected,
-            outstanding: stats.outstandingFees,
-          },
-        ],
-        performance: [],
-        recentPayments,
-        recentActivities: [
-          {
-            id: 'act-dashboard',
-            title: 'Dashboard',
-            detail: 'Aggregated via Admin API',
-            at: new Date().toISOString(),
-          },
-        ],
-      }
-    })
   }
 
   if (wantRest) {

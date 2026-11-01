@@ -342,6 +342,18 @@ export const firestoreCatalogService = {
   async getAssessments() {
     return firestoreSchool.listAssessments()
   },
+  async getPendingAssessments() {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.getPendingAssessments()
+  },
+  async getAssessment(id: string) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.getAssessment(id)
+  },
+  async getPendingApprovalsCount() {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.getPendingApprovalsCount()
+  },
   async getExaminations() {
     return []
   },
@@ -541,6 +553,10 @@ export const firestoreCatalogService = {
   }) {
     const { apiCatalogService } = await import('@/services/api/server-api-services')
     return apiCatalogService.transitionAssessment(input)
+  },
+  async deleteAssessment(id: string) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.deleteAssessment(id)
   },
   async getGradingScale() {
     const { apiCatalogService } = await import('@/services/api/server-api-services')

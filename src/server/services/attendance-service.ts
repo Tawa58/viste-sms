@@ -361,7 +361,7 @@ export async function getAttendance(
 export async function computeTodayAttendancePct(): Promise<number> {
   const today = new Date().toISOString().slice(0, 10)
   const rows = await queryCollection<AttendanceRecord>('attendance', {
-    limit: 500,
+    limit: 80,
     where: [{ field: 'date', op: '==', value: today }],
   })
   const daily = rows.filter((r) => (r.kind ?? (r.subjectId ? 'PERIOD' : 'DAILY')) === 'DAILY')

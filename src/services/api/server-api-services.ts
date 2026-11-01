@@ -615,6 +615,15 @@ export const apiCatalogService = {
     }),
   getExaminations: async (): Promise<Examination[]> => [],
   getAssessments: () => apiFetch<Assessment[]>('/api/v1/results?kind=assessments'),
+  getPendingAssessments: () =>
+    apiFetch<Assessment[]>('/api/v1/results?kind=pending', { skipCache: true }),
+  getAssessment: (id: string) =>
+    apiFetch<Assessment | null>(
+      `/api/v1/results?kind=assessment&assessmentId=${encodeURIComponent(id)}`,
+      { skipCache: true },
+    ),
+  getPendingApprovalsCount: () =>
+    apiFetch<{ count: number }>('/api/v1/results?kind=pending-count', { cacheTtlMs: 60_000 }),
   getMarks: (assessmentId?: string, studentId?: string) => {
     const params = new URLSearchParams({ kind: 'marks' })
     if (assessmentId) params.set('assessmentId', assessmentId)
@@ -675,6 +684,10 @@ export const apiCatalogService = {
     apiFetch<Assessment>('/api/v1/results', {
       method: 'PATCH',
       body: JSON.stringify(input),
+    }),
+  deleteAssessment: (id: string) =>
+    apiFetch<{ deleted: true; id: string }>(`/api/v1/results/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     }),
   upsertMark: (input: {
     assessmentId: string
@@ -760,7 +773,7 @@ export const apiCatalogService = {
   getAnnouncements: () => apiFetch<Announcement[]>('/api/v1/announcements'),
   getNotifications: () =>
     apiFetch<import('@/types').AppNotification[]>('/api/v1/notifications', {
-      cacheTtlMs: 15_000,
+      cacheTtlMs: 90_000,
     }),
   markNotificationRead: (id: string) =>
     apiFetch<import('@/types').AppNotification | null>('/api/v1/notifications', {

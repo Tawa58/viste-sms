@@ -791,6 +791,20 @@ const mockCatalogService = {
   },
   getExaminations: (): Promise<Examination[]> => mockRequest(examinations),
   getAssessments: (): Promise<Assessment[]> => mockRequest(assessments),
+  getPendingAssessments: (): Promise<Assessment[]> =>
+    mockRequest(
+      assessments.filter((a) =>
+        ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'].includes(a.status),
+      ),
+    ),
+  getAssessment: (id: string): Promise<Assessment | null> =>
+    mockRequest(assessments.find((a) => a.id === id) ?? null),
+  getPendingApprovalsCount: (): Promise<{ count: number }> =>
+    mockRequest({
+      count: assessments.filter((a) =>
+        ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'].includes(a.status),
+      ).length,
+    }),
   getMarks: (assessmentId?: string, studentId?: string): Promise<Mark[]> =>
     mockRequest(
       marks.filter(
@@ -912,6 +926,19 @@ const mockCatalogService = {
       m.status = next
     }
     return mockRequest(assessments[idx])
+  },
+  deleteAssessment: async (id: string) => {
+    const idx = assessments.findIndex((a) => a.id === id)
+    if (idx < 0) throw new Error('Assessment not found')
+    const status = assessments[idx].status
+    if (status === 'PUBLISHED' || status === 'LOCKED') {
+      throw new Error('Published or locked results cannot be deleted')
+    }
+    assessments.splice(idx, 1)
+    for (let i = marks.length - 1; i >= 0; i -= 1) {
+      if (marks[i].assessmentId === id) marks.splice(i, 1)
+    }
+    return mockRequest({ deleted: true as const, id })
   },
   getGradingScale: async () =>
     mockRequest({

@@ -179,6 +179,7 @@ export async function apiFetch<T>(
       invalidateApiCache('/api/v1/invoices')
     }
     if (url.includes('/results')) invalidateApiCache('/api/v1/results')
+    if (url.includes('/notifications')) invalidateApiCache('/api/v1/notifications')
     if (url.includes('/announcements')) invalidateApiCache('/api/v1/announcements')
     invalidateApiCache('/api/v1/catalog')
     invalidateApiCache('/api/v1/dashboard')

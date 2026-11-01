@@ -8,8 +8,11 @@ import {
   resultTransitionSchema,
 } from '@/server/validators/school'
 import {
+  countPendingApprovalsService,
+  getAssessmentService,
   getResultPortalService,
   listAssessmentsService,
+  listPendingAssessmentsService,
   listMarksService,
   submitClassSubjectMarksService,
   submitMonthlyMarksService,
@@ -25,6 +28,12 @@ export const GET = withApiHandler(async (request) => {
     return jsonOk(await getResultPortalService(session, studentId))
   }
   const kind = url.searchParams.get('kind')
+  if (kind === 'pending-count') return jsonOk(await countPendingApprovalsService(session))
+  if (kind === 'pending') return jsonOk(await listPendingAssessmentsService(session))
+  const assessmentId = url.searchParams.get('assessmentId')
+  if (kind === 'assessment' && assessmentId) {
+    return jsonOk(await getAssessmentService(session, assessmentId))
+  }
   if (kind === 'assessments') return jsonOk(await listAssessmentsService(session))
   if (kind === 'marks') {
     return jsonOk(

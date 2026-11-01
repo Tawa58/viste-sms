@@ -5,6 +5,7 @@ import { SearchInput } from '@/components/shared/search-input'
 import { LoadingState } from '@/components/shared/loading-state'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Alert } from '@/components/shared/alert'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -92,21 +93,6 @@ function assessmentKey(
 export function ExaminationsPage() {
   const { hasPermission } = useAuth()
   const canApprove = hasPermission('results.approve')
-  const [loading, setLoading] = useState(true)
-  const [assessments, setAssessments] = useState<Assessment[]>([])
-
-  async function reloadResults() {
-    const a = await catalogService.getAssessments()
-    setAssessments(a)
-  }
-
-  useEffect(() => {
-    reloadResults()
-      .catch(() => notify.error('Could not load assessments'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  if (loading) return <LoadingState message="Loading examinations…" />
 
   return (
     <div className="space-y-6">
@@ -131,10 +117,7 @@ export function ExaminationsPage() {
         </CardContent>
       </Card>
 
-      <ClassSubjectMarksPanel
-        assessments={assessments}
-        onSaved={reloadResults}
-      />
+      <ClassSubjectMarksPanel />
 
       {canApprove ? (
         <Alert title="Approvals" tone="info">
@@ -154,13 +137,7 @@ export function ExaminationsPage() {
   )
 }
 
-function ClassSubjectMarksPanel({
-  assessments,
-  onSaved,
-}: {
-  assessments: Assessment[]
-  onSaved: () => Promise<void>
-}) {
+function ClassSubjectMarksPanel() {
   const { user } = useAuth()
   const [searchParams] = useSearchParams()
   const isTeacher = user?.role === 'TEACHER'
@@ -270,9 +247,11 @@ function ClassSubjectMarksPanel({
     gradingTrackForLevel(selectedClass?.educationLevelId ?? selectedClass?.level)
   ]
 
-  const currentAssessment = useMemo(() => {
-    if (!classId || !subjectId) return undefined
-    const id = assessmentKey(
+  const [currentAssessment, setCurrentAssessment] = useState<Assessment | undefined>()
+
+  const sheetId = useMemo(() => {
+    if (!classId || !subjectId) return ''
+    return assessmentKey(
       periodType,
       classId,
       subjectId,
@@ -280,8 +259,35 @@ function ClassSubjectMarksPanel({
       periodType === 'DAILY' ? date : weekOf,
       termId,
     )
-    return assessments.find((a) => a.id === id)
-  }, [assessments, classId, subjectId, periodType, month, date, weekOf, termId])
+  }, [classId, subjectId, periodType, month, date, weekOf, termId])
+
+  async function reloadCurrentSheet() {
+    if (!sheetId) {
+      setCurrentAssessment(undefined)
+      return
+    }
+    const row = await catalogService.getAssessment(sheetId)
+    setCurrentAssessment(row ?? undefined)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    if (!sheetId) {
+      setCurrentAssessment(undefined)
+      return
+    }
+    void catalogService
+      .getAssessment(sheetId)
+      .then((row) => {
+        if (!cancelled) setCurrentAssessment(row ?? undefined)
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentAssessment(undefined)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sheetId])
 
   useEffect(() => {
     if (currentAssessment) setMaxScoreInput(String(currentAssessment.maxScore))
@@ -435,7 +441,7 @@ function ClassSubjectMarksPanel({
           error: 'Could not save marks',
         },
       )
-      await onSaved()
+      await reloadCurrentSheet()
     } finally {
       setSaving(false)
     }
@@ -659,6 +665,37 @@ function ClassSubjectMarksPanel({
           <Button variant="outline" loading={saving} onClick={() => void submit('draft')}>
             Save draft
           </Button>
+          {currentAssessment &&
+          currentAssessment.status !== 'PUBLISHED' &&
+          currentAssessment.status !== 'LOCKED' &&
+          (!isTeacher ||
+            currentAssessment.status === 'DRAFT' ||
+            currentAssessment.status === 'REJECTED') ? (
+            <Button
+              variant="destructive"
+              loading={saving}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    'Delete this mark sheet and all its scores? This cannot be undone.',
+                  )
+                ) {
+                  return
+                }
+                setSaving(true)
+                void notify
+                  .process(() => catalogService.deleteAssessment(currentAssessment.id), {
+                    loading: 'Deleting…',
+                    success: 'Mark sheet deleted',
+                    error: 'Could not delete mark sheet',
+                  })
+                  .then(() => reloadCurrentSheet())
+                  .finally(() => setSaving(false))
+              }}
+            >
+              Delete
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>
@@ -672,7 +709,7 @@ export function ApprovalsPage() {
   const [assessments, setAssessments] = useState<Assessment[]>([])
 
   async function reload() {
-    setAssessments(await catalogService.getAssessments())
+    setAssessments(await catalogService.getPendingAssessments())
   }
 
   useEffect(() => {
@@ -701,7 +738,7 @@ export function ApprovalsPage() {
     <div className="space-y-4">
       <PageHeader
         title="Approvals"
-        description="Hold results for review, send them back, approve, or release them to the portal."
+        description="Hold results for review, send them back, approve, delete, or release them to the portal."
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Approvals' }]}
       />
       <ResultsApprovalsPanel assessments={assessments} onUpdated={reload} />
@@ -719,6 +756,7 @@ function ResultsApprovalsPanel({
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Assessment | null>(null)
   const [filterClass, setFilterClass] = useState('')
   const [filterSubject, setFilterSubject] = useState('')
 
@@ -773,7 +811,7 @@ function ResultsApprovalsPanel({
       <CardHeader>
         <CardTitle>Pending results</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Review, hold, deny, approve, or release each submitted class sheet.
+          Review, hold, deny, approve, delete, or release each submitted class sheet.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -895,6 +933,17 @@ function ResultsApprovalsPanel({
                         </Button>
                       </>
                     ) : null}
+                    {a.status !== 'PUBLISHED' && a.status !== 'LOCKED' ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-destructive/40 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                        loading={busy}
+                        onClick={() => setDeleteTarget(a)}
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
                   </div>
                 </li>
               )
@@ -902,6 +951,31 @@ function ResultsApprovalsPanel({
           </ul>
         )}
       </CardContent>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+        title="Delete this result sheet?"
+        description={`“${deleteTarget?.name ?? 'This sheet'}” and all of its marks will be removed. This cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={() => {
+          const target = deleteTarget
+          if (!target) return
+          setBusyId(target.id)
+          void notify
+            .process(() => catalogService.deleteAssessment(target.id), {
+              loading: 'Deleting…',
+              success: 'Deleted',
+              error: 'Could not delete',
+            })
+            .then(() => onUpdated())
+            .finally(() => {
+              setBusyId(null)
+              setDeleteTarget(null)
+            })
+        }}
+      />
     </Card>
   )
 }

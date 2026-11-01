@@ -40,6 +40,8 @@ export type NavItem = {
   label: string
   to: string
   icon: LucideIcon
+  /** Show a live pending-approvals count on this item. */
+  badge?: 'approvals'
 }
 
 export type NavGroup = {
@@ -49,6 +51,7 @@ export type NavGroup = {
 
 export const mainNav: NavItem[] = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+  { label: 'Approvals', to: '/approvals', icon: BadgeCheck, badge: 'approvals' },
   { label: 'Check in', to: '/check-in', icon: MapPinCheck },
   { label: 'Staff attendance', to: '/staff-attendance', icon: UserCheck },
   { label: 'Students', to: '/students', icon: Users },
@@ -61,7 +64,6 @@ export const mainNav: NavItem[] = [
   { label: 'Attendance', to: '/attendance', icon: CalendarCheck },
   { label: 'Examinations', to: '/examinations', icon: ClipboardList },
   { label: 'Results', to: '/results', icon: Trophy },
-  { label: 'Approvals', to: '/approvals', icon: BadgeCheck },
   { label: 'Fees & Payments', to: '/fees', icon: Wallet },
   { label: 'Financial dashboard', to: '/finance', icon: ChartColumn },
   { label: 'Expenses', to: '/expenses', icon: Receipt },
@@ -84,7 +86,10 @@ export const mainNav: NavItem[] = [
 export const navGroups: NavGroup[] = [
   {
     label: 'Overview',
-    items: [{ label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard }],
+    items: [
+      { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+      { label: 'Approvals', to: '/approvals', icon: BadgeCheck, badge: 'approvals' },
+    ],
   },
   {
     label: 'Daily check-in',
@@ -112,7 +117,6 @@ export const navGroups: NavGroup[] = [
       { label: 'Attendance', to: '/attendance', icon: CalendarCheck },
       { label: 'Examinations', to: '/examinations', icon: ClipboardList },
       { label: 'Results', to: '/results', icon: Trophy },
-      { label: 'Approvals', to: '/approvals', icon: BadgeCheck },
     ],
   },
   {

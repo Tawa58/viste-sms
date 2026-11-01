@@ -172,10 +172,12 @@ export async function listAdminNotifications(
 ): Promise<AppNotification[]> {
   assertAdminNotifications(session)
 
+  const { remember, sessionCacheKey } = await import('@/server/http/memo')
+  return remember(sessionCacheKey(session, 'admin-notifications'), 45_000, async () => {
   let rows: AppNotification[] = []
   try {
     rows = await queryCollection<AppNotification>('notifications', {
-      limit: 100,
+      limit: 40,
       where: [{ field: 'audience', op: '==', value: 'ADMIN' }],
     })
   } catch (err) {
@@ -223,6 +225,7 @@ export async function listAdminNotifications(
   return [...collapsed, ...others].sort((a, b) =>
     String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')),
   )
+  })
 }
 
 export async function markNotificationRead(

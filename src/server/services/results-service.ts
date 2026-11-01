@@ -2,7 +2,7 @@ import 'server-only'
 
 import { writeAuditLog } from '@/server/audit/logger'
 import type { SessionContext } from '@/server/auth/session'
-import { requirePermission } from '@/server/authorization/permissions'
+import { requirePermission, sessionHasPermission } from '@/server/authorization/permissions'
 import type {
   ClassSubjectMarksInput,
   MarkUpsertInput,
@@ -27,6 +27,7 @@ import type {
 } from '@/types'
 import { getAdminDb } from '@/lib/firebase/admin'
 import {
+  deleteDoc,
   getDoc,
   newId,
   queryAllCollection,
@@ -755,6 +756,65 @@ async function notifyAssessmentWorkflow(
   }
 }
 
+const PENDING_APPROVAL_STATUSES: MarkWorkflowStatus[] = [
+  'SUBMITTED',
+  'UNDER_REVIEW',
+  'APPROVED',
+]
+
+export async function countPendingApprovals(
+  session: SessionContext,
+): Promise<{ count: number }> {
+  requirePermission(session, 'results.approve')
+  const { remember, sessionCacheKey } = await import('@/server/http/memo')
+  return remember(sessionCacheKey(session, 'pending-approvals-count'), 30_000, async () => {
+    const db = getAdminDb()
+    const snaps = await Promise.all(
+      PENDING_APPROVAL_STATUSES.map((status) =>
+        db.collection('assessments').where('status', '==', status).count().get(),
+      ),
+    )
+    return { count: snaps.reduce((sum, snap) => sum + snap.data().count, 0) }
+  })
+}
+
+export async function listPendingAssessments(
+  session: SessionContext,
+): Promise<AssessmentDto[]> {
+  requirePermission(session, 'results.approve')
+  const statuses: MarkWorkflowStatus[] = [...PENDING_APPROVAL_STATUSES, 'REJECTED']
+  const chunks = await Promise.all(
+    statuses.map((status) =>
+      queryAllCollection<Assessment>('assessments', {
+        max: 200,
+        where: [{ field: 'status', op: '==', value: status }],
+      }),
+    ),
+  )
+  return chunks
+    .flat()
+    .sort((a, b) => (b.submittedAt || b.name).localeCompare(a.submittedAt || a.name))
+}
+
+export async function getAssessment(
+  session: SessionContext,
+  assessmentId: string,
+): Promise<AssessmentDto | null> {
+  requirePermission(session, 'results.read')
+  const row = await getDoc<Assessment>('assessments', assessmentId)
+  if (!row) return null
+  if (session.role === 'TEACHER') {
+    const staffId = session.profile.staffId
+    const staff = staffId ? await getDoc<Staff>('staff', staffId) : null
+    const subjects = new Set(staff?.subjectIds ?? [])
+    const classIds = new Set(staff?.classIds ?? [])
+    if (!subjects.has(row.subjectId) || (row.classId && !classIds.has(row.classId))) {
+      throw forbidden('You are not assigned to this class or subject')
+    }
+  }
+  return row
+}
+
 export async function listAssessments(session: SessionContext): Promise<AssessmentDto[]> {
   requirePermission(session, 'results.read')
   let rows = await queryAllCollection<Assessment>('assessments', { max: 1500 })
@@ -790,13 +850,74 @@ export async function listMarks(
   return queryAllCollection<Mark>('marks', { max: 800 })
 }
 
+export async function deleteAssessment(
+  session: SessionContext,
+  assessmentId: string,
+  requestId?: string,
+): Promise<{ deleted: true; id: string }> {
+  const assessment = await getDoc<Assessment>('assessments', assessmentId)
+  if (!assessment) throw notFound('Assessment not found')
+  if (assessment.status === 'PUBLISHED' || assessment.status === 'LOCKED') {
+    throw forbidden('Published or locked results cannot be deleted')
+  }
+
+  if (assessment.status === 'DRAFT') {
+    requirePermission(session, 'results.enter')
+    if (assessment.classId && assessment.subjectId) {
+      await assertTeacherCanEnter(session, assessment.classId, assessment.subjectId)
+    }
+  } else if (assessment.status === 'REJECTED') {
+    if (!sessionHasPermission(session, 'results.approve')) {
+      requirePermission(session, 'results.enter')
+      if (assessment.classId && assessment.subjectId) {
+        await assertTeacherCanEnter(session, assessment.classId, assessment.subjectId)
+      }
+    }
+  } else {
+    requirePermission(session, 'results.approve')
+  }
+
+  const marks = await queryAllCollection<Mark>('marks', {
+    max: 2000,
+    where: [{ field: 'assessmentId', op: '==', value: assessmentId }],
+  })
+  const db = getAdminDb()
+  let batch = db.batch()
+  let ops = 0
+  for (const m of marks) {
+    batch.delete(db.collection('marks').doc(m.id))
+    ops += 1
+    if (ops >= 400) {
+      await batch.commit()
+      batch = db.batch()
+      ops = 0
+    }
+  }
+  if (ops > 0) await batch.commit()
+  await deleteDoc('assessments', assessmentId)
+
+  await writeAuditLog({
+    actorId: session.uid,
+    actorRole: session.role,
+    action: 'assessment.delete',
+    entityType: 'assessments',
+    entityId: assessmentId,
+    requestId,
+  })
+  return { deleted: true, id: assessmentId }
+}
+
 export const getResultPortalService = getResultsPortal
 export const getResultsPortalService = getResultsPortal
 export const listAssessmentsService = listAssessments
+export const countPendingApprovalsService = countPendingApprovals
+export const listPendingAssessmentsService = listPendingAssessments
+export const getAssessmentService = getAssessment
 export const listMarksService = listMarks
 export const upsertMarkService = upsertMark
 export const submitMonthlyMarksService = submitMonthlyMarks
 export const submitClassSubjectMarksService = submitClassSubjectMarks
+export const deleteAssessmentService = deleteAssessment
 
 export async function transitionAssessmentService(
   session: SessionContext,

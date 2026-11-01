@@ -20,7 +20,6 @@ import type {
   Stream,
   Subject,
   Term,
-  Assessment,
 } from '@/types'
 import { listClasses as listClassesManaged } from '@/server/services/classes-service'
 import { listSubjects as listSubjectsManaged } from '@/server/services/extracurricular-service'
@@ -106,10 +105,19 @@ export type DashboardBundle = {
  */
 export async function getDashboardBundle(session: SessionContext): Promise<DashboardBundle> {
   requirePermission(session, 'students.read')
+  const { remember, sessionCacheKey } = await import('@/server/http/memo')
+  return remember(sessionCacheKey(session, 'dashboard-bundle'), 45_000, async () => {
   const db = getAdminDb()
   const scopedRole = session.role === 'PARENT' || session.role === 'STUDENT'
 
-  const [accessibleStudents, studentCountSnap, teacherCount, invoices, payments, assessments, todayPct] =
+  const pendingCount = () =>
+    Promise.all(
+      (['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'] as const).map((status) =>
+        db.collection('assessments').where('status', '==', status).count().get(),
+      ),
+    ).then((snaps) => snaps.reduce((sum, snap) => sum + snap.data().count, 0))
+
+  const [accessibleStudents, studentCountSnap, teacherCount, invoices, payments, pendingResults, todayPct] =
     await Promise.all([
       scopedRole ? listAccessibleStudents(session) : Promise.resolve(null),
       scopedRole
@@ -121,9 +129,9 @@ export async function getDashboardBundle(session: SessionContext): Promise<Dashb
         .count()
         .get()
         .then((snap) => snap.data().count),
-      queryCollection<Invoice>('invoices', { limit: 100 }),
-      queryCollection<Payment>('payments', { limit: 100 }),
-      queryCollection<Assessment>('assessments', { limit: 100 }),
+      queryCollection<Invoice>('invoices', { limit: 40 }),
+      queryCollection<Payment>('payments', { limit: 40 }),
+      pendingCount().catch(() => 0),
       computeTodayAttendancePct().catch(() => 0),
     ])
 
@@ -148,15 +156,14 @@ export async function getDashboardBundle(session: SessionContext): Promise<Dashb
     feesCollected: scopedPayments
       .filter((p) => p.status === 'CONFIRMED')
       .reduce((sum, p) => sum + p.amount, 0),
-    pendingResults: assessments.filter((a) =>
-      ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED'].includes(a.status),
-    ).length,
+    pendingResults,
   }
 
   return {
     stats,
     recentPayments: scopedPayments.filter((p) => p.status === 'CONFIRMED').slice(0, 5),
   }
+  })
 }
 
 export async function getDashboardService(session: SessionContext): Promise<DashboardStats> {
