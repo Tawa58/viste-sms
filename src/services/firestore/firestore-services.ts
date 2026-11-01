@@ -362,7 +362,9 @@ export const firestoreCatalogService = {
     const { apiCatalogService } = await import('@/services/api/server-api-services')
     return apiCatalogService.getEcdChecklist(studentId, termId)
   },
-  async upsertEcdChecklist(input: import('@/types').EcdChecklist) {
+  async upsertEcdChecklist(
+    input: Omit<import('@/types').EcdChecklist, 'id' | 'updatedAt' | 'updatedBy'>,
+  ) {
     const { apiCatalogService } = await import('@/services/api/server-api-services')
     return apiCatalogService.upsertEcdChecklist(input)
   },
