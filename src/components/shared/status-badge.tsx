@@ -1,14 +1,15 @@
 import { cn } from '@/lib/utils'
 
-export function StatusBadge({ status }: { status: string }) {
-  const normalized = status.replaceAll('_', ' ')
+export function StatusBadge({ status }: { status?: string | null }) {
+  const value = typeof status === 'string' ? status : ''
+  const normalized = value ? value.replaceAll('_', ' ') : 'Unknown'
   const tone =
-    /active|paid|present|published|confirmed|success|available|approved/i.test(status)
+    /active|paid|present|published|confirmed|success|available|approved/i.test(value)
       ? 'success'
-      : /pending|draft|late|partial|submitted|review|open/i.test(status)
+      : /pending|draft|late|partial|submitted|review|open/i.test(value)
         ? 'warning'
         : /absent|overdue|failed|locked|disabled|cancelled|reversed|rejected|outstanding|inactive|suspended/i.test(
-              status,
+              value,
             )
           ? 'danger'
           : 'secondary'

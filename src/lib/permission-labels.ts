@@ -99,6 +99,6 @@ export const ASSIGNABLE_CONSOLE_ROLES = [
   'TEACHER',
 ] as const
 
-export function roleLabel(role: string): string {
-  return role.replaceAll('_', ' ')
+export function roleLabel(role: string | null | undefined): string {
+  return typeof role === 'string' && role ? role.replaceAll('_', ' ') : 'Unknown'
 }

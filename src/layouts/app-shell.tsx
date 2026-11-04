@@ -384,7 +384,7 @@ export function AppShell() {
                   {user?.name}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {user?.role.replaceAll('_', ' ')}
+                  {user?.role?.replaceAll('_', ' ') ?? ''}
                 </p>
               </div>
             )}
@@ -455,7 +455,7 @@ export function AppShell() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{user?.name}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {user?.role.replaceAll('_', ' ')}
+                      {user?.role?.replaceAll('_', ' ') ?? ''}
                     </p>
                   </div>
                   <Button
@@ -625,7 +625,7 @@ export function AppShell() {
                         {user?.name}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {user?.role.replaceAll('_', ' ')}
+                        {user?.role?.replaceAll('_', ' ') ?? ''}
                       </span>
                     </span>
                   </Button>

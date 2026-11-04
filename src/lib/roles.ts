@@ -229,8 +229,8 @@ export function hasAppPermission(
   return Boolean(permissions?.includes(permission))
 }
 
-export function formatRoleLabel(role: UserRole) {
-  return role.replaceAll('_', ' ')
+export function formatRoleLabel(role: UserRole | string | null | undefined) {
+  return typeof role === 'string' && role ? role.replaceAll('_', ' ') : 'Unknown'
 }
 
 export function defaultTitleForRole(role: UserRole) {

@@ -20,7 +20,7 @@ import {
 } from '@/lib/grading'
 import { gradingTrackForLevel } from '@/lib/education-levels'
 import { EcdResultsSheet } from '@/components/shared/ecd-checklist-ticks'
-import { isEcdClass, summariseEcdRatings } from '@/lib/ecd-checklist'
+import { ECD_OVERALL_LABELS, isEcdClass, summariseEcdRatings } from '@/lib/ecd-checklist'
 import { catalogService, classService, studentService } from '@/services/api'
 import { notify } from '@/lib/notify'
 import { fullName } from '@/lib/utils'
@@ -1443,9 +1443,7 @@ function StaffClassResultsPage() {
                             {summaryTicks ? summaryTicks.NY : '—'}
                           </td>
                           <td className="px-3 py-2 text-sm">
-                            {sheet?.overall
-                              ? sheet.overall.replaceAll('_', ' ').toLowerCase()
-                              : '—'}
+                            {sheet?.overall ? ECD_OVERALL_LABELS[sheet.overall] ?? '—' : '—'}
                           </td>
                           <td className="px-3 py-2 text-xs text-muted-foreground">
                             {sheet ? (sheet.status === 'COMPLETED' ? 'Completed' : 'Draft') : 'Not started'}
