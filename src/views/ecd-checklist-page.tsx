@@ -16,7 +16,10 @@ import {
   ECD_OVERALL_LABELS,
   ageFromDateOfBirth,
   ecdStageLabel,
+  ecdStatusLabel,
   isEcdClass,
+  isEcdReleasedToPortal,
+  normalizeEcdStatus,
   resolveEcdStage,
   summariseEcdRatings,
   type EcdRating,
@@ -275,7 +278,7 @@ function EcdRoster({
                       <p className="font-medium">{fullName(s)}</p>
                       <p className="text-xs text-muted-foreground">
                         {sheet
-                          ? `${sheet.status === 'COMPLETED' ? 'Completed' : 'Draft'} · ${summary?.A ?? 0} achieved · ${summary?.D ?? 0} developing · ${summary?.NY ?? 0} not yet`
+                          ? `${ecdStatusLabel(sheet.status)} · ${summary?.A ?? 0} achieved · ${summary?.D ?? 0} developing · ${summary?.NY ?? 0} not yet`
                           : 'Not started this term'}
                       </p>
                     </div>
@@ -359,8 +362,13 @@ function EcdChecklistForm({
 
   const summary = summariseEcdRatings(ratings)
 
-  async function save(status: 'DRAFT' | 'COMPLETED') {
-    if (!canEnter) return
+  const flow = normalizeEcdStatus(existing?.status)
+  const lockedForTeacher =
+    flow === 'PUBLISHED' || flow === 'APPROVED' || flow === 'UNDER_REVIEW'
+  const canEditSheet = canEnter && !lockedForTeacher
+
+  async function save(status: 'DRAFT' | 'SUBMITTED') {
+    if (!canEditSheet) return
     setSaving(true)
     try {
       const cleaned: Record<string, EcdRating> = {}
@@ -389,10 +397,10 @@ function EcdChecklistForm({
             signatures,
           } satisfies EcdChecklistWrite),
         {
-          loading: status === 'COMPLETED' ? 'Saving completed checklist…' : 'Saving draft…',
+          loading: status === 'SUBMITTED' ? 'Submitting for approval…' : 'Saving draft…',
           success:
-            status === 'COMPLETED'
-              ? 'Checklist completed for this term'
+            status === 'SUBMITTED'
+              ? 'Submitted for admin approval — not visible to parents yet'
               : 'Draft saved — you can finish later',
           error: 'Could not save the checklist',
         },
@@ -473,9 +481,20 @@ function EcdChecklistForm({
         blank of {summary.total}
       </p>
 
+      {lockedForTeacher ? (
+        <Alert
+          title={isEcdReleasedToPortal(existing?.status) ? 'Released to portal' : 'Awaiting approval'}
+          tone="info"
+        >
+          {isEcdReleasedToPortal(existing?.status)
+            ? 'This checklist has been released. Ask an admin if changes are needed.'
+            : 'This checklist is with admin for review. They can deny it if you need to edit and resubmit.'}
+        </Alert>
+      ) : null}
+
       <EcdChecklistTicks
         ratings={ratings}
-        readOnly={!canEnter}
+        readOnly={!canEditSheet}
         onChange={(id, rating) =>
           setRatings((prev) => ({
             ...prev,
@@ -594,16 +613,16 @@ function EcdChecklistForm({
         </CardContent>
       </Card>
 
-      {canEnter ? (
+      {canEditSheet ? (
         <div className="flex flex-wrap gap-2 print:hidden">
           <Button loading={saving} variant="outline" onClick={() => void save('DRAFT')}>
             Save draft
           </Button>
-          <Button loading={saving} onClick={() => void save('COMPLETED')}>
-            Complete this term’s assessment
+          <Button loading={saving} onClick={() => void save('SUBMITTED')}>
+            Submit for admin approval
           </Button>
         </div>
-      ) : (
+      ) : canEnter && lockedForTeacher ? null : (
         <Alert title="View only" tone="warning">
           Your account can read ECD checklists. Entering ratings requires results entry permission.
         </Alert>

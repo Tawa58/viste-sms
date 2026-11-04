@@ -20,7 +20,13 @@ import {
 } from '@/lib/grading'
 import { gradingTrackForLevel } from '@/lib/education-levels'
 import { EcdResultsSheet } from '@/components/shared/ecd-checklist-ticks'
-import { ECD_OVERALL_LABELS, isEcdClass, summariseEcdRatings } from '@/lib/ecd-checklist'
+import {
+  ECD_OVERALL_LABELS,
+  ecdStatusLabel,
+  isEcdClass,
+  isEcdReleasedToPortal,
+  summariseEcdRatings,
+} from '@/lib/ecd-checklist'
 import { catalogService, classService, studentService } from '@/services/api'
 import { notify } from '@/lib/notify'
 import { fullName } from '@/lib/utils'
@@ -710,9 +716,24 @@ export function ApprovalsPage() {
   const canApprove = hasPermission('results.approve')
   const [loading, setLoading] = useState(true)
   const [assessments, setAssessments] = useState<Assessment[]>([])
+  const [ecdPending, setEcdPending] = useState<EcdChecklist[]>([])
+  const [classes, setClasses] = useState<SchoolClass[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [terms, setTerms] = useState<Term[]>([])
 
   async function reload() {
-    setAssessments(await catalogService.getPendingAssessments())
+    const [pending, ecd, cls, st, t] = await Promise.all([
+      catalogService.getPendingAssessments(),
+      catalogService.getPendingEcdChecklists(),
+      classService.list().catch(() => [] as SchoolClass[]),
+      studentService.list().catch(() => [] as Student[]),
+      catalogService.getTerms().catch(() => [] as Term[]),
+    ])
+    setAssessments(pending)
+    setEcdPending(ecd)
+    setClasses(cls)
+    setStudents(st)
+    setTerms(t)
   }
 
   useEffect(() => {
@@ -744,8 +765,175 @@ export function ApprovalsPage() {
         description="Hold results for review, send them back, approve, delete, or release them to the portal."
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Approvals' }]}
       />
+      <EcdApprovalsPanel
+        rows={ecdPending}
+        classes={classes}
+        students={students}
+        terms={terms}
+        onUpdated={reload}
+      />
       <ResultsApprovalsPanel assessments={assessments} onUpdated={reload} />
     </div>
+  )
+}
+
+function EcdApprovalsPanel({
+  rows,
+  classes,
+  students,
+  terms,
+  onUpdated,
+}: {
+  rows: EcdChecklist[]
+  classes: SchoolClass[]
+  students: Student[]
+  terms: Term[]
+  onUpdated: () => Promise<void>
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const studentName = (id: string) => {
+    const s = students.find((x) => x.id === id)
+    return s ? fullName(s) : id
+  }
+
+  async function act(
+    checklistId: string,
+    status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PUBLISHED',
+    messages: { loading: string; success: string; error: string },
+    releaseToPortal = false,
+  ) {
+    setBusyId(checklistId)
+    try {
+      await notify.process(
+        () =>
+          catalogService.transitionEcdChecklist({
+            checklistId,
+            status,
+            releaseToPortal,
+          }),
+        messages,
+      )
+      await onUpdated()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Pending ECD checklists</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Review and release ECD learner development sheets. Learners only see them after release,
+          and only when fees are cleared.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No ECD submissions waiting for approval.</p>
+        ) : (
+          <ul className="divide-y divide-border rounded-xl border border-border">
+            {rows.map((row) => {
+              const busy = busyId === row.id
+              const open =
+                row.status === 'SUBMITTED' ||
+                row.status === 'COMPLETED' ||
+                row.status === 'UNDER_REVIEW' ||
+                row.status === 'APPROVED'
+              return (
+                <li
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                >
+                  <div>
+                    <p className="font-medium">{studentName(row.studentId)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {classes.find((c) => c.id === row.classId)?.name || row.classId} ·{' '}
+                      {terms.find((t) => t.id === row.termId)?.name || row.termId} · ECD checklist
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <StatusBadge
+                      status={
+                        row.status === 'COMPLETED' ? 'SUBMITTED' : row.status
+                      }
+                    />
+                    {open ? (
+                      <>
+                        {row.status !== 'UNDER_REVIEW' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            loading={busy}
+                            onClick={() =>
+                              void act(row.id, 'UNDER_REVIEW', {
+                                loading: 'Holding for review…',
+                                success: 'Held for review',
+                                error: 'Could not hold for review',
+                              })
+                            }
+                          >
+                            Review
+                          </Button>
+                        ) : null}
+                        {row.status !== 'APPROVED' ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            loading={busy}
+                            onClick={() =>
+                              void act(row.id, 'APPROVED', {
+                                loading: 'Approving…',
+                                success: 'Approved — release when ready',
+                                error: 'Could not approve',
+                              })
+                            }
+                          >
+                            Approve
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="sm"
+                          loading={busy}
+                          onClick={() =>
+                            void act(
+                              row.id,
+                              'PUBLISHED',
+                              {
+                                loading: 'Releasing…',
+                                success: 'Released to the student portal',
+                                error: 'Could not release',
+                              },
+                              true,
+                            )
+                          }
+                        >
+                          Release
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          loading={busy}
+                          onClick={() =>
+                            void act(row.id, 'REJECTED', {
+                              loading: 'Sending back…',
+                              success: 'Denied — teacher can correct and resubmit',
+                              error: 'Could not deny',
+                            })
+                          }
+                        >
+                          Deny
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1005,7 +1193,9 @@ export function ResultsPage() {
             : null
           if (!mounted) return
           setView(portal)
-          setEcdSheet(sheet && sheet.status === 'COMPLETED' ? sheet : null)
+          const released = sheet && isEcdReleasedToPortal(sheet.status)
+          const feesOk = portal.accessState !== 'RESULTS_LOCKED_FEES'
+          setEcdSheet(released && feesOk ? sheet : null)
         }
       } catch (err) {
         console.error(err)
@@ -1446,7 +1636,7 @@ function StaffClassResultsPage() {
                             {sheet?.overall ? ECD_OVERALL_LABELS[sheet.overall] ?? '—' : '—'}
                           </td>
                           <td className="px-3 py-2 text-xs text-muted-foreground">
-                            {sheet ? (sheet.status === 'COMPLETED' ? 'Completed' : 'Draft') : 'Not started'}
+                            {sheet ? ecdStatusLabel(sheet.status) : 'Not started'}
                           </td>
                         </tr>
                       )

@@ -362,9 +362,21 @@ export const firestoreCatalogService = {
     const { apiCatalogService } = await import('@/services/api/server-api-services')
     return apiCatalogService.getEcdChecklist(studentId, termId)
   },
+  async getPendingEcdChecklists() {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.getPendingEcdChecklists()
+  },
   async upsertEcdChecklist(input: import('@/types').EcdChecklistWrite) {
     const { apiCatalogService } = await import('@/services/api/server-api-services')
     return apiCatalogService.upsertEcdChecklist(input)
+  },
+  async transitionEcdChecklist(input: {
+    checklistId: string
+    status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PUBLISHED'
+    releaseToPortal?: boolean
+  }) {
+    const { apiCatalogService } = await import('@/services/api/server-api-services')
+    return apiCatalogService.transitionEcdChecklist(input)
   },
   async getExaminations() {
     return []

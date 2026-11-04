@@ -815,10 +815,19 @@ const mockCatalogService = {
     mockRequest(
       ecdChecklists.find((r) => r.studentId === studentId && r.termId === termId) ?? null,
     ),
+  getPendingEcdChecklists: () =>
+    mockRequest(
+      ecdChecklists.filter((r) =>
+        ['SUBMITTED', 'COMPLETED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'].includes(r.status),
+      ),
+    ),
   upsertEcdChecklist: async (input: EcdChecklistWrite) => {
     const id = `ecdchk_${input.studentId}_${input.termId}`.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const status =
+      input.status === 'COMPLETED' || input.status === 'SUBMITTED' ? 'SUBMITTED' : input.status
     const row: EcdChecklist = {
       ...input,
+      status,
       id,
       updatedAt: new Date().toISOString(),
       updatedBy: 'mock',
@@ -829,6 +838,21 @@ const mockCatalogService = {
     if (idx >= 0) ecdChecklists[idx] = row
     else ecdChecklists.push(row)
     return mockRequest(row)
+  },
+  transitionEcdChecklist: async (input: {
+    checklistId: string
+    status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PUBLISHED'
+    releaseToPortal?: boolean
+  }) => {
+    const idx = ecdChecklists.findIndex((r) => r.id === input.checklistId)
+    if (idx < 0) throw new Error('ECD checklist not found')
+    const next = input.releaseToPortal ? 'PUBLISHED' : input.status
+    ecdChecklists[idx] = {
+      ...ecdChecklists[idx],
+      status: next,
+      updatedAt: new Date().toISOString(),
+    }
+    return mockRequest(ecdChecklists[idx])
   },
   getMarks: (assessmentId?: string, studentId?: string): Promise<Mark[]> =>
     mockRequest(

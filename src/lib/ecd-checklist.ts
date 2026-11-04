@@ -345,3 +345,47 @@ export function summariseEcdRatings(ratings: Record<string, EcdRating | ''>) {
   const scored = counts.A + counts.D + counts.NY
   return { ...counts, scored, total: ECD_INDICATOR_IDS.length }
 }
+
+export type EcdWorkflowStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PUBLISHED'
+
+/** Map stored values (including legacy COMPLETED) onto the approval workflow. */
+export function normalizeEcdStatus(status: string | undefined | null): EcdWorkflowStatus {
+  if (status === 'COMPLETED' || status === 'SUBMITTED') return 'SUBMITTED'
+  if (status === 'UNDER_REVIEW') return 'UNDER_REVIEW'
+  if (status === 'APPROVED') return 'APPROVED'
+  if (status === 'REJECTED') return 'REJECTED'
+  if (status === 'PUBLISHED') return 'PUBLISHED'
+  return 'DRAFT'
+}
+
+export function isEcdReleasedToPortal(status: string | undefined | null) {
+  return normalizeEcdStatus(status) === 'PUBLISHED'
+}
+
+export function isEcdPendingApproval(status: string | undefined | null) {
+  const n = normalizeEcdStatus(status)
+  return n === 'SUBMITTED' || n === 'UNDER_REVIEW' || n === 'APPROVED'
+}
+
+export function ecdStatusLabel(status: string | undefined | null) {
+  switch (normalizeEcdStatus(status)) {
+    case 'SUBMITTED':
+      return 'Submitted'
+    case 'UNDER_REVIEW':
+      return 'Under review'
+    case 'APPROVED':
+      return 'Approved'
+    case 'REJECTED':
+      return 'Denied'
+    case 'PUBLISHED':
+      return 'Released'
+    default:
+      return 'Draft'
+  }
+}

@@ -634,9 +634,20 @@ export const apiCatalogService = {
     apiFetch<EcdChecklist | null>(
       `/api/v1/ecd-checklists?studentId=${encodeURIComponent(studentId)}&termId=${encodeURIComponent(termId)}`,
     ),
+  getPendingEcdChecklists: () =>
+    apiFetch<EcdChecklist[]>('/api/v1/ecd-checklists?kind=pending', { skipCache: true }),
   upsertEcdChecklist: (input: EcdChecklistWrite) =>
     apiFetch<EcdChecklist>('/api/v1/ecd-checklists', {
       method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  transitionEcdChecklist: (input: {
+    checklistId: string
+    status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'PUBLISHED'
+    releaseToPortal?: boolean
+  }) =>
+    apiFetch<EcdChecklist>('/api/v1/ecd-checklists', {
+      method: 'PATCH',
       body: JSON.stringify(input),
     }),
   getMarks: (assessmentId?: string, studentId?: string) => {

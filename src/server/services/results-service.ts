@@ -769,12 +769,19 @@ export async function countPendingApprovals(
   const { remember, sessionCacheKey } = await import('@/server/http/memo')
   return remember(sessionCacheKey(session, 'pending-approvals-count'), 30_000, async () => {
     const db = getAdminDb()
-    const snaps = await Promise.all(
-      PENDING_APPROVAL_STATUSES.map((status) =>
-        db.collection('assessments').where('status', '==', status).count().get(),
-      ),
+    const { countPendingEcdChecklists } = await import(
+      '@/server/services/ecd-checklist-service'
     )
-    return { count: snaps.reduce((sum, snap) => sum + snap.data().count, 0) }
+    const [snaps, ecdPending] = await Promise.all([
+      Promise.all(
+        PENDING_APPROVAL_STATUSES.map((status) =>
+          db.collection('assessments').where('status', '==', status).count().get(),
+        ),
+      ),
+      countPendingEcdChecklists(session),
+    ])
+    const assessmentCount = snaps.reduce((sum, snap) => sum + snap.data().count, 0)
+    return { count: assessmentCount + ecdPending }
   })
 }
 

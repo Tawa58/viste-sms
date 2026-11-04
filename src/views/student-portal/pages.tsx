@@ -404,6 +404,16 @@ function ResultsBody({ data }: { data: StudentPortalBundle }) {
     }
   }
 
+  if (results.accessState === 'RESULTS_LOCKED_FEES') {
+    return (
+      <EmptyState
+        icon={Lock}
+        title="Results locked"
+        description="Your results have been published, but they stay hidden until outstanding fees are cleared. Check your fees statement or speak to the bursar."
+      />
+    )
+  }
+
   if (ecdChecklist) {
     return (
       <EcdResultsSheet
@@ -411,16 +421,6 @@ function ResultsBody({ data }: { data: StudentPortalBundle }) {
         learnerName={`${profile.firstName} ${profile.lastName}`.trim()}
         className={profile.className}
         termName={term?.name}
-      />
-    )
-  }
-
-  if (results.accessState === 'RESULTS_LOCKED_FEES') {
-    return (
-      <EmptyState
-        icon={Lock}
-        title="Results locked"
-        description="Your results have been published, but they stay hidden until outstanding fees are cleared. Check your fees statement or speak to the bursar."
       />
     )
   }

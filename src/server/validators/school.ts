@@ -633,7 +633,8 @@ export const ecdChecklistUpsertSchema = z.object({
   termId: idSchema,
   academicYearId: z.string().max(80).optional(),
   stage: z.enum(['ECD_A', 'ECD_B']),
-  status: z.enum(['DRAFT', 'COMPLETED']).default('DRAFT'),
+  /** Teachers may only draft or submit; admin release uses the transition endpoint. */
+  status: z.enum(['DRAFT', 'SUBMITTED', 'COMPLETED']).default('DRAFT'),
   assessedAt: isoDateSchema,
   classTeacherName: z.string().max(120).optional().or(z.literal('')),
   ageYears: z.string().max(20).optional().or(z.literal('')),
@@ -654,3 +655,10 @@ export const ecdChecklistUpsertSchema = z.object({
     .optional(),
 })
 export type EcdChecklistUpsertInput = z.infer<typeof ecdChecklistUpsertSchema>
+
+export const ecdChecklistTransitionSchema = z.object({
+  checklistId: idSchema,
+  status: z.enum(['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'PUBLISHED']),
+  releaseToPortal: z.boolean().optional(),
+})
+export type EcdChecklistTransitionInput = z.infer<typeof ecdChecklistTransitionSchema>

@@ -2,12 +2,17 @@ import 'server-only'
 
 import { getAdminDb } from '@/lib/firebase/admin'
 import { educationLevelName } from '@/lib/education-levels'
-import { isEcdClass, isEcdEducationLevel } from '@/lib/ecd-checklist'
+import { isEcdClass, isEcdEducationLevel, isEcdReleasedToPortal } from '@/lib/ecd-checklist'
 import type { SessionContext } from '@/server/auth/session'
 import { getStudentOrThrow } from '@/server/authorization/isolation'
 import { forbidden } from '@/server/errors'
 import { queryCollection } from '@/server/repositories/firestore-repo'
-import { listInvoices, listPayments, resolveBillingTerm } from '@/server/services/finance-service'
+import {
+  isFeeCleared,
+  listInvoices,
+  listPayments,
+  resolveBillingTerm,
+} from '@/server/services/finance-service'
 import { getGradingScaleForEducationLevel, gradeFromScore } from '@/server/services/grading-service'
 import { formatUnitGrade, isUnitsScale, unitsFromScore } from '@/lib/grading'
 import { currentMonthPeriod, invoiceBalance, invoicesForBillingPeriod } from '@/lib/fees'
@@ -530,10 +535,40 @@ export async function getStudentPortalBundle(session: SessionContext): Promise<S
     subjects: [],
   }
   let resultsLoaded = true
-  const results = await getResultsPortal(session, studentId).catch(() => {
+  let results = await getResultsPortal(session, studentId).catch(() => {
     resultsLoaded = false
     return emptyResults
   })
+
+  let ecdChecklist: EcdChecklist | null = null
+  if (term && (isEcdEducationLevel(levelId) || isEcdClass(klass ?? {}))) {
+    const row = await getOne<EcdChecklist>(
+      'ecdChecklists',
+      `ecdchk_${student.id}_${term.id}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
+    )
+    if (row && isEcdReleasedToPortal(row.status)) {
+      // ECD learners often have no subject assessments — still enforce fee clearance.
+      if (results.accessState === 'RESULTS_NOT_PUBLISHED') {
+        const policy = await getFeePolicy()
+        if (policy.blockResultsWhenFeesOutstanding) {
+          const cleared = await isFeeCleared(studentId)
+          results = {
+            ...results,
+            accessState: cleared ? 'RESULTS_AVAILABLE' : 'RESULTS_LOCKED_FEES',
+          }
+        } else {
+          results = { ...results, accessState: 'RESULTS_AVAILABLE' }
+        }
+      }
+      if (
+        results.accessState !== 'RESULTS_LOCKED_FEES' &&
+        results.accessState !== 'ACCOUNT_RESTRICTED'
+      ) {
+        ecdChecklist = row
+      }
+    }
+  }
+
   const resultsOpen =
     resultsLoaded &&
     results.accessState !== 'RESULTS_LOCKED_FEES' &&
@@ -614,14 +649,7 @@ export async function getStudentPortalBundle(session: SessionContext): Promise<S
     subjects,
     attendance,
     results,
-    ecdChecklist: await (async () => {
-      if (!term || (!isEcdEducationLevel(levelId) && !isEcdClass(klass ?? {}))) return null
-      const row = await getOne<EcdChecklist>(
-        'ecdChecklists',
-        `ecdchk_${student.id}_${term.id}`.replace(/[^a-zA-Z0-9_-]/g, '_'),
-      )
-      return row?.status === 'COMPLETED' ? row : null
-    })(),
+    ecdChecklist,
     resultPeriods,
     fees,
     exams: academics ? buildExams(academics, resultsOpen) : [],

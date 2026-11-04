@@ -1343,7 +1343,15 @@ export interface StudentResultPeriod {
 
 export type EcdRatingMark = 'A' | 'D' | 'NY' | 'NA'
 export type EcdStage = 'ECD_A' | 'ECD_B'
-export type EcdChecklistStatus = 'DRAFT' | 'COMPLETED'
+/** Legacy COMPLETED is treated as SUBMITTED (awaiting admin approval). */
+export type EcdChecklistStatus =
+  | 'DRAFT'
+  | 'COMPLETED'
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PUBLISHED'
 export type EcdOverallProgress =
   | 'EXCELLENT'
   | 'GOOD'
@@ -1397,7 +1405,7 @@ export interface StudentPortalBundle {
   subjects: StudentPortalSubject[]
   attendance: StudentPortalAttendance
   results: ResultPortalView
-  /** Completed ECD A/B development checklist for the current term, when applicable. */
+  /** ECD checklist released to the portal for the current term (fee-cleared learners only). */
   ecdChecklist?: EcdChecklist | null
   /** Published results grouped for the results sheet; empty while locked by fees. */
   resultPeriods: StudentResultPeriod[]

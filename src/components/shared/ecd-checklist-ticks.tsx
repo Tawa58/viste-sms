@@ -130,7 +130,17 @@ export function EcdResultsSheet({
           {ecdStageLabel(sheet.stage)}
           {termName ? ` · ${termName}` : ''}
           {sheet.assessedAt ? ` · ${sheet.assessedAt}` : ''}
-          {sheet.status === 'COMPLETED' ? ' · Completed' : ' · Draft'}
+          {sheet.status === 'PUBLISHED'
+            ? ' · Released'
+            : sheet.status === 'SUBMITTED' || sheet.status === 'COMPLETED'
+              ? ' · Submitted'
+              : sheet.status === 'APPROVED'
+                ? ' · Approved'
+                : sheet.status === 'UNDER_REVIEW'
+                  ? ' · Under review'
+                  : sheet.status === 'REJECTED'
+                    ? ' · Denied'
+                    : ' · Draft'}
         </p>
         <p className="mt-1 text-sm">
           ✓ Achieved {summary.A} · Developing {summary.D} · Not yet {summary.NY}
