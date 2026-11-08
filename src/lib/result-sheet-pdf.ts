@@ -35,6 +35,19 @@ export type ResultSlipSchool = {
   email?: string
 }
 
+/** Printed on every results slip, in full. */
+export const RESULT_SLIP_SCHOOL_NAME =
+  'Visionary Institute of Science and Technology Education (VISTE)'
+
+function drawOfficialSchoolName(doc: jsPDF, centerX: number, y: number, maxWidth: number) {
+  doc.setTextColor(...BRAND)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  const lines = doc.splitTextToSize(RESULT_SLIP_SCHOOL_NAME, maxWidth) as string[]
+  doc.text(lines, centerX, y, { align: 'center' })
+  return y + lines.length * 5
+}
+
 export type ResultSlip = {
   school: ResultSlipSchool
   studentName: string
@@ -64,17 +77,7 @@ function paintSlip(
     doc.addImage(logo.data, 'PNG', margin, 10, w, h, undefined, 'FAST')
   }
 
-  doc.setTextColor(...BRAND)
-  doc.setFont('helvetica', 'bold')
-  let titleSize = 16
-  doc.setFontSize(titleSize)
-  while (titleSize > 11 && doc.getTextWidth(slip.school.name) > contentWidth - 64) {
-    titleSize -= 0.5
-    doc.setFontSize(titleSize)
-  }
-  doc.text(slip.school.name || 'School', pageWidth / 2, 16, { align: 'center' })
-
-  let headerY = 21.5
+  let headerY = drawOfficialSchoolName(doc, pageWidth / 2, 16, contentWidth - 36)
   doc.setTextColor(55)
   if (slip.school.motto) {
     doc.setFont('helvetica', 'italic')
@@ -239,7 +242,7 @@ function paintSlip(
     doc.setFontSize(7.5)
     doc.setTextColor(130)
     doc.setFont('helvetica', 'normal')
-    doc.text(`Official results slip · ${slip.school.name} · ${issued}`, margin, pageHeight - 8)
+    doc.text(`Official results slip · VISTE · ${issued}`, margin, pageHeight - 8)
     doc.text(`Page ${p - startPage + 1} of ${slipPages}`, pageWidth - margin, pageHeight - 8, {
       align: 'right',
     })
@@ -273,16 +276,7 @@ function drawLetterhead(
     const w = Math.min(24, h * logo.ratio)
     doc.addImage(logo.data, 'PNG', margin, 10, w, h, undefined, 'FAST')
   }
-  doc.setTextColor(...BRAND)
-  doc.setFont('helvetica', 'bold')
-  let titleSize = 15
-  doc.setFontSize(titleSize)
-  while (titleSize > 11 && doc.getTextWidth(school.name) > contentWidth - 56) {
-    titleSize -= 0.5
-    doc.setFontSize(titleSize)
-  }
-  doc.text(school.name || 'School', pageWidth / 2, 15, { align: 'center' })
-  let headerY = 20
+  let headerY = drawOfficialSchoolName(doc, pageWidth / 2, 15, contentWidth - 32)
   doc.setTextColor(55)
   if (school.motto) {
     doc.setFont('helvetica', 'italic')
@@ -381,7 +375,7 @@ export async function downloadSubjectClassSheetPdf(sheet: SubjectClassSheet, fil
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.5)
     doc.setTextColor(130)
-    doc.text(`Class subject sheet · ${sheet.school.name} · ${issued}`, margin, pageHeight - 7)
+    doc.text(`Class subject sheet · VISTE · ${issued}`, margin, pageHeight - 7)
     doc.text(`Page ${p} of ${pages}`, pageWidth - margin, pageHeight - 7, { align: 'right' })
   }
 
