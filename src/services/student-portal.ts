@@ -132,8 +132,33 @@ function demoBundle(): StudentPortalBundle {
       teacherName: teacherOf[r.subject],
       comment: r.comment,
     }))
+    const papers = full.map((r, i) => ({
+      id: `${id}-${i}`,
+      subject: r.subject,
+      title: label,
+      satOn: sortKey.length >= 10 ? sortKey.slice(0, 10) : sortKey.slice(0, 7),
+      publishedAt: `${year}-10-01T08:00:00.000Z`,
+      score: r.score,
+      maxScore: r.maxScore,
+      percent: r.percent,
+      grade: r.grade,
+      teacherName: r.teacherName,
+      comment: r.comment,
+    }))
     const average = avg(full)
-    return { id, kind, label, year: String(year), sortKey, basis, rows: full, average, averageGrade: grade(average), classTeacherComment }
+    return {
+      id,
+      kind,
+      label,
+      year: String(year),
+      sortKey,
+      basis,
+      papers,
+      rows: full,
+      average,
+      averageGrade: grade(average),
+      classTeacherComment,
+    }
   }
   const term2Rows = previous.map((r, i) => ({
     subject: r.subject,
@@ -144,18 +169,17 @@ function demoBundle(): StudentPortalBundle {
   const term2Comment = 'A very good term, Tawanda. Keep aiming high in Chemistry.'
   const term3Comment = 'Tawanda is a focused, respectful learner. Keep up the consistency into the final exams.'
   const resultPeriods: StudentResultPeriod[] = [
-    sheet(`month:${thisMonth}`, 'MONTH', monthLabel(thisMonth), thisMonth, 'Monthly tests', latest, term3Comment),
-    sheet(`month:${lastMonth}`, 'MONTH', monthLabel(lastMonth), lastMonth, 'Monthly tests', previous, term2Comment),
-    sheet('term:demo-term-3', 'TERM', `Term 3 ${year}`, `${year}-09-08`, 'Average of monthly tests', term3Rows, term3Comment),
-    sheet('term:demo-term-2', 'TERM', `Term 2 ${year}`, `${year}-05-05`, 'End-of-term examinations', term2Rows, term2Comment),
+    sheet('MONTHLY', 'MONTHLY', 'Monthly tests', thisMonth, 'Monthly tests', latest, term3Comment),
+    sheet('WEEKLY', 'WEEKLY', 'Weekly tests', lastMonth, 'Weekly tests', previous),
+    sheet('TERMLY', 'TERMLY', 'End of term tests', `${year}-09-08`, 'End of term tests', term2Rows, term2Comment),
+    sheet('MOCK', 'MOCK', 'Mock tests', `${year}-08-15`, 'Mock tests', term3Rows),
     sheet(
-      `year:${year}`,
-      'YEAR',
-      String(year),
-      String(year),
-      'Average of Term 2, Term 3',
-      term3Rows.map((r, i) => ({ subject: r.subject, score: Math.round(((r.score + term2Rows[i]!.score) / 2) * 10) / 10, comment: r.comment })),
-      term3Comment,
+      'DAILY',
+      'DAILY',
+      'Daily exercises',
+      `${year}-10-03`,
+      'Daily exercises',
+      latest.slice(0, 2).map((r) => ({ subject: r.subject, score: r.score, comment: r.comment })),
     ),
   ]
 

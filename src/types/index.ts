@@ -1312,7 +1312,8 @@ export interface StudentPortalActivities {
   house?: { name: string; color?: string }
 }
 
-export type StudentResultPeriodKind = 'TERM' | 'MONTH' | 'YEAR'
+/** Result category a learner can open in the portal. */
+export type StudentResultPeriodKind = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'MOCK' | 'TERMLY'
 
 export interface StudentResultRow {
   subject: string
@@ -1324,17 +1325,35 @@ export interface StudentResultRow {
   comment?: string
 }
 
-/** One selectable results sheet: a term, a month, or a whole year. */
+/** One released exercise, test, or exam, with the date it was published. */
+export interface StudentResultPaper {
+  id: string
+  subject: string
+  title: string
+  /** When it was sat: YYYY-MM-DD, week start, or YYYY-MM. */
+  satOn?: string
+  /** When admin released it to the portal. */
+  publishedAt?: string
+  score: number
+  maxScore: number
+  percent: number
+  grade: string
+  teacherName?: string
+  comment?: string
+}
+
+/** All released papers in one category (daily, weekly, monthly, mock, or end of term). */
 export interface StudentResultPeriod {
-  /** e.g. `term:t3-2026`, `month:2026-09`, `year:2026`. */
   id: string
   kind: StudentResultPeriodKind
   label: string
   year: string
   /** Sorts newest first when compared descending. */
   sortKey: string
-  /** How the marks were produced, e.g. "End-of-term examinations". */
+  /** How the marks were produced, e.g. "End of term tests". */
   basis: string
+  papers: StudentResultPaper[]
+  /** Subject averages across the papers in this category. */
   rows: StudentResultRow[]
   average?: number
   averageGrade?: string

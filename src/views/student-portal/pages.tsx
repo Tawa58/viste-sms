@@ -41,11 +41,10 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select } from '@/components/ui/select'
 import { useAuth } from '@/contexts/auth-context'
 import { notify } from '@/lib/notify'
 import { EcdResultsSheet } from '@/components/shared/ecd-checklist-ticks'
-import { downloadResultSheetPdf, formatMark, formatPercent } from '@/lib/result-sheet-pdf'
+import { formatMark, formatPercent, formatResultDate } from '@/lib/result-sheet-pdf'
 import { cn } from '@/lib/utils'
 import { fileService } from '@/services/files'
 import { timetableService } from '@/services/api'
@@ -233,10 +232,12 @@ export function MyProfilePage() {
 
 /* ---------- Results ---------- */
 
-const PERIOD_KINDS: { kind: StudentResultPeriodKind; label: string; picker: string }[] = [
-  { kind: 'TERM', label: 'Term', picker: 'Select term' },
-  { kind: 'MONTH', label: 'Month', picker: 'Select month' },
-  { kind: 'YEAR', label: 'Year', picker: 'Select year' },
+const PERIOD_KINDS: { kind: StudentResultPeriodKind; label: string }[] = [
+  { kind: 'DAILY', label: 'Daily exercises' },
+  { kind: 'WEEKLY', label: 'Weekly tests' },
+  { kind: 'MONTHLY', label: 'Monthly tests' },
+  { kind: 'MOCK', label: 'Mock tests' },
+  { kind: 'TERMLY', label: 'End of term' },
 ]
 
 function ResultDetailsTable({ details }: { details: [string, string][] }) {
@@ -284,7 +285,7 @@ function ResultSheet({ data, period }: { data: StudentPortalBundle; period: Stud
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <StatCard label="Average" value={formatPercent(period.average)} icon={Award} tone="success" />
         <StatCard label="Overall grade" value={period.averageGrade ?? '—'} icon={Trophy} tone="accent" />
-        <StatCard label="Subjects" value={String(period.rows.length)} icon={BookOpen} />
+        <StatCard label="Papers" value={String(period.papers.length)} icon={BookOpen} />
         <StatCard label="Best subject" value={best?.subject ?? '—'} hint={best ? formatPercent(best.percent) : undefined} icon={Award} tone="success" />
       </div>
 
@@ -304,7 +305,7 @@ function ResultSheet({ data, period }: { data: StudentPortalBundle; period: Stud
               ['Student name', [profile.firstName, profile.middleName, profile.lastName].filter(Boolean).join(' ')],
               ['Reg. number', profile.studentNumber],
               ['Class', [profile.className, profile.streamName].filter(Boolean).join(' ')],
-              [PERIOD_KINDS.find((k) => k.kind === period.kind)?.label ?? 'Period', period.label],
+              ['Category', period.label],
             ]}
           />
 
@@ -314,39 +315,42 @@ function ResultSheet({ data, period }: { data: StudentPortalBundle; period: Stud
                 <tr>
                   <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
                   <th className="px-3 py-2.5 font-medium">Subject</th>
-                  <th className="px-3 py-2.5 text-center font-medium">Mark</th>
-                  <th className="px-3 py-2.5 text-center font-medium">%</th>
+                  <th className="px-3 py-2.5 font-medium">Exercise / test</th>
+                  <th className="px-3 py-2.5 font-medium">Date sat</th>
+                  <th className="px-3 py-2.5 font-medium">Published</th>
+                  <th className="px-3 py-2.5 text-center font-medium">Score</th>
                   <th className="px-3 py-2.5 text-center font-medium">Grade</th>
-                  <th className="px-3 py-2.5 font-medium">Subject teacher</th>
-                  <th className="px-3 py-2.5 font-medium">Teacher's comment</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {period.rows.map((r, i) => (
-                  <tr key={r.subject} className="align-top even:bg-muted/20">
+                {period.papers.map((paper, i) => (
+                  <tr key={paper.id} className="align-top even:bg-muted/20">
                     <td className="px-3 py-2.5 text-center tabular-nums text-muted-foreground">{i + 1}</td>
-                    <td className="px-3 py-2.5 font-medium">{r.subject}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-center tabular-nums text-muted-foreground">
-                      {formatMark(r.score, r.maxScore)}
+                    <td className="px-3 py-2.5 font-medium">{paper.subject}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{paper.title}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
+                      {formatResultDate(paper.satOn)}
                     </td>
-                    <td className="px-3 py-2.5 text-center font-medium tabular-nums">{formatPercent(r.percent)}</td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
+                      {formatResultDate(paper.publishedAt)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-center tabular-nums">
+                      {formatMark(paper.score, paper.maxScore)}
+                    </td>
                     <td className="px-3 py-2.5 text-center">
-                      <Badge variant={scoreTone(r.percent)} className="min-w-8 justify-center">
-                        {r.grade}
+                      <Badge variant={scoreTone(paper.percent)} className="min-w-8 justify-center">
+                        {paper.grade || '—'}
                       </Badge>
                     </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{r.teacherName ?? '—'}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{r.comment ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="border-t border-border bg-muted/40 font-semibold">
                 <tr>
                   <td />
-                  <td className="px-3 py-2.5">
-                    Average ({period.rows.length} subject{period.rows.length === 1 ? '' : 's'})
+                  <td className="px-3 py-2.5" colSpan={4}>
+                    Average ({period.papers.length} paper{period.papers.length === 1 ? '' : 's'})
                   </td>
-                  <td />
                   <td className="px-3 py-2.5 text-center tabular-nums">{formatPercent(period.average)}</td>
                   <td className="px-3 py-2.5 text-center">
                     {period.averageGrade ? (
@@ -357,11 +361,13 @@ function ResultSheet({ data, period }: { data: StudentPortalBundle; period: Stud
                       '—'
                     )}
                   </td>
-                  <td colSpan={2} />
                 </tr>
               </tfoot>
             </table>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Printed slips are issued at the school office. Ask the office for a hard copy when you come in.
+          </p>
 
           <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
             <p className="text-sm font-medium">Class teacher's comment</p>
@@ -380,29 +386,11 @@ function ResultSheet({ data, period }: { data: StudentPortalBundle; period: Stud
 
 function ResultsBody({ data }: { data: StudentPortalBundle }) {
   const { results, resultPeriods, ecdChecklist, profile, term } = data
-  const available = PERIOD_KINDS.filter((k) => resultPeriods.some((p) => p.kind === k.kind))
-  const [kind, setKind] = useState<StudentResultPeriodKind>(available[0]?.kind ?? 'TERM')
-  const options = resultPeriods.filter((p) => p.kind === kind)
-  const [selectedId, setSelectedId] = useState<string>(options[0]?.id ?? '')
-  const period = options.find((p) => p.id === selectedId) ?? options[0]
-  const [downloading, setDownloading] = useState(false)
-
-  function changeKind(next: StudentResultPeriodKind) {
-    setKind(next)
-    setSelectedId(resultPeriods.find((p) => p.kind === next)?.id ?? '')
-  }
-
-  async function download() {
-    if (!period) return
-    setDownloading(true)
-    try {
-      await downloadResultSheetPdf(data, period)
-    } catch (err) {
-      notify.error('Could not create the results sheet', err instanceof Error ? err.message : undefined)
-    } finally {
-      setDownloading(false)
-    }
-  }
+  const firstWithPapers =
+    PERIOD_KINDS.find((k) => resultPeriods.some((p) => p.kind === k.kind && p.papers.length > 0))?.kind ??
+    'MONTHLY'
+  const [kind, setKind] = useState<StudentResultPeriodKind>(firstWithPapers)
+  const period = resultPeriods.find((p) => p.kind === kind)
 
   if (results.accessState === 'RESULTS_LOCKED_FEES') {
     return (
@@ -424,70 +412,57 @@ function ResultsBody({ data }: { data: StudentPortalBundle }) {
       />
     )
   }
-  if (!period) {
-    return (
-      <EmptyState
-        icon={Trophy}
-        title="No results released yet"
-        description="Your teachers may have entered marks already. They appear here once the school approves and releases them."
-      />
-    )
-  }
+
+  const anyReleased = resultPeriods.some((p) => p.papers.length > 0)
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-4">
-          <div className="space-y-1.5">
-            <p className="text-xs font-medium text-muted-foreground">View results by</p>
-            <div className="inline-flex rounded-lg bg-muted p-1" role="tablist" aria-label="Results period">
-              {PERIOD_KINDS.map((k) => {
-                const enabled = available.some((a) => a.kind === k.kind)
-                return (
-                  <button
-                    key={k.kind}
-                    type="button"
-                    role="tab"
-                    aria-selected={kind === k.kind}
-                    disabled={!enabled}
-                    onClick={() => changeKind(k.kind)}
-                    className={cn(
-                      'rounded-md px-4 py-1.5 text-sm font-medium text-muted-foreground transition-all disabled:cursor-not-allowed disabled:opacity-40',
-                      kind === k.kind && 'bg-card text-foreground shadow-sm',
-                    )}
-                  >
-                    {k.label}
-                  </button>
-                )
-              })}
-            </div>
+        <CardContent className="space-y-2 p-4">
+          <p className="text-xs font-medium text-muted-foreground">Category</p>
+          <div className="flex flex-wrap gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Results category">
+            {PERIOD_KINDS.map((k) => {
+              const count = resultPeriods.find((p) => p.kind === k.kind)?.papers.length ?? 0
+              return (
+                <button
+                  key={k.kind}
+                  type="button"
+                  role="tab"
+                  aria-selected={kind === k.kind}
+                  onClick={() => setKind(k.kind)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-all',
+                    kind === k.kind && 'bg-card text-foreground shadow-sm',
+                  )}
+                >
+                  {k.label}
+                  <span className="ml-1.5 tabular-nums text-xs opacity-70">{count}</span>
+                </button>
+              )
+            })}
           </div>
-          <div className="min-w-0 flex-1 space-y-1.5 sm:max-w-xs">
-            <p className="text-xs font-medium text-muted-foreground">
-              {PERIOD_KINDS.find((k) => k.kind === kind)?.picker}
-            </p>
-            <Select value={period.id} onChange={(e) => setSelectedId(e.target.value)} aria-label="Results period">
-              {options.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <Button className="sm:ml-auto" loading={downloading} onClick={() => void download()}>
-            <Download className="h-4 w-4" /> Download results sheet
-          </Button>
         </CardContent>
       </Card>
 
-      <ResultSheet data={data} period={period} />
+      {!anyReleased || !period || period.papers.length === 0 ? (
+        <EmptyState
+          icon={Trophy}
+          title={anyReleased ? `No ${PERIOD_KINDS.find((k) => k.kind === kind)?.label.toLowerCase() ?? 'results'} yet` : 'No results released yet'}
+          description="Your teachers may have entered marks already. They appear here once the school approves and releases them. Printed slips are collected from the school office."
+        />
+      ) : (
+        <ResultSheet data={data} period={period} />
+      )}
     </div>
   )
 }
 
 export function MyResultsPage() {
   return (
-    <PortalPage title="Results" description="Choose a term, month or year and download your official results sheet.">
+    <PortalPage
+      title="Results"
+      description="Choose daily exercises, weekly tests, monthly tests, mock tests, or end of term. Each score shows the date it was published. Collect a printed slip from the school office."
+    >
       {(data) => <ResultsBody data={data} />}
     </PortalPage>
   )

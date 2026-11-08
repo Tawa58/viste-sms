@@ -27,6 +27,13 @@ import {
   isEcdReleasedToPortal,
   summariseEcdRatings,
 } from '@/lib/ecd-checklist'
+import {
+  downloadResultSlipsPdf,
+  downloadSubjectClassSheetPdf,
+  formatResultDate,
+  type ResultSlip,
+  type SubjectClassSheet,
+} from '@/lib/result-sheet-pdf'
 import { catalogService, classService, studentService } from '@/services/api'
 import { notify } from '@/lib/notify'
 import { fullName } from '@/lib/utils'
@@ -39,6 +46,7 @@ import type {
   MarkCommentMode,
   EcdChecklist,
   ResultPortalView,
+  StudentResultPaper,
   SchoolClass,
   Staff,
   Student,
@@ -1239,14 +1247,181 @@ export function ResultsPage() {
   return <StaffClassResultsPage />
 }
 
+function paperFrom(assessment: Assessment, mark: Mark): StudentResultPaper {
+  const satOn =
+    assessment.type === 'DAILY'
+      ? assessment.date
+      : assessment.type === 'WEEKLY'
+        ? assessment.weekOf ?? assessment.date
+        : assessment.type === 'TERMLY'
+          ? assessment.date
+          : assessment.month
+  const percent = assessment.maxScore > 0 ? (mark.score / assessment.maxScore) * 100 : 0
+  return {
+    id: `${assessment.id}:${mark.studentId}`,
+    subject: assessment.name,
+    title: assessment.name,
+    satOn,
+    publishedAt: assessment.approvedAt,
+    score: mark.score,
+    maxScore: assessment.maxScore,
+    percent,
+    grade: mark.grade,
+    teacherName: assessment.enteredByName,
+    comment: mark.comment,
+  }
+}
+
+async function buildClassSlips(input: {
+  classId: string
+  className: string
+  kind: SlipKind
+  studentIds: string[]
+  studentById: Map<string, Student>
+}): Promise<ResultSlip[]> {
+  const [school, assessments] = await Promise.all([
+    catalogService.getSchoolProfile(),
+    catalogService.getAssessments(),
+  ])
+  const released = assessments.filter(
+    (a) =>
+      a.classId === input.classId &&
+      a.type === input.kind &&
+      (a.status === 'PUBLISHED' || a.status === 'LOCKED') &&
+      a.maxScore > 0,
+  )
+  const subjects = await catalogService.getSubjects().catch(() => [] as Subject[])
+  const subjectName = new Map(subjects.map((s) => [s.id, s.name]))
+  const markGroups = await Promise.all(released.map((a) => catalogService.getMarks(a.id)))
+  const wanted = new Set(input.studentIds)
+  const byStudent = new Map<string, StudentResultPaper[]>()
+  released.forEach((assessment, index) => {
+    for (const mark of markGroups[index] ?? []) {
+      if (!wanted.has(mark.studentId)) continue
+      const paper = paperFrom(assessment, mark)
+      paper.subject = subjectName.get(assessment.subjectId) || assessment.name
+      const list = byStudent.get(mark.studentId) ?? []
+      list.push(paper)
+      byStudent.set(mark.studentId, list)
+    }
+  })
+  const categoryLabel = SLIP_KINDS.find((k) => k[0] === input.kind)?.[1] ?? 'Results'
+  const schoolInfo = {
+    name: school.name,
+    motto: school.motto,
+    address: school.address,
+    phone: school.phone,
+    email: school.email,
+  }
+  return input.studentIds.flatMap((id) => {
+    const papers = (byStudent.get(id) ?? []).sort(
+      (a, b) =>
+        (b.publishedAt || b.satOn || '').localeCompare(a.publishedAt || a.satOn || '') ||
+        a.subject.localeCompare(b.subject),
+    )
+    if (papers.length === 0) return []
+    const student = input.studentById.get(id)
+    const average = papers.reduce((sum, paper) => sum + paper.percent, 0) / papers.length
+    return [
+      {
+        school: schoolInfo,
+        studentName: student ? fullName(student) : id,
+        studentNumber: student?.studentNumber || '—',
+        className: input.className,
+        categoryLabel,
+        papers,
+        average,
+      },
+    ]
+  })
+}
+
+async function buildSubjectClassSheet(input: {
+  classId: string
+  className: string
+  kind: SlipKind
+  subjectId: string
+  students: Student[]
+}): Promise<SubjectClassSheet | null> {
+  const [school, assessments, subjects] = await Promise.all([
+    catalogService.getSchoolProfile(),
+    catalogService.getAssessments(),
+    catalogService.getSubjects().catch(() => [] as Subject[]),
+  ])
+  const released = assessments
+    .filter(
+      (a) =>
+        a.classId === input.classId &&
+        a.subjectId === input.subjectId &&
+        a.type === input.kind &&
+        (a.status === 'PUBLISHED' || a.status === 'LOCKED') &&
+        a.maxScore > 0,
+    )
+    .sort((a, b) => (a.approvedAt || a.date || a.month || '').localeCompare(b.approvedAt || b.date || b.month || ''))
+  if (released.length === 0) return null
+  const markGroups = await Promise.all(released.map((a) => catalogService.getMarks(a.id)))
+  const markByStudent = released.map((assessment, index) => {
+    const byStudent = new Map<string, Mark>()
+    for (const mark of markGroups[index] ?? []) byStudent.set(mark.studentId, mark)
+    return { assessment, byStudent }
+  })
+  const subjectName =
+    subjects.find((s) => s.id === input.subjectId)?.name || released[0]?.name || 'Subject'
+  const columns = markByStudent.map(({ assessment }) => ({
+    id: assessment.id,
+    label: formatResultDate(assessment.approvedAt || assessment.date || assessment.weekOf || assessment.month),
+  }))
+  const rows = [...input.students]
+    .sort((a, b) => fullName(a).localeCompare(fullName(b)))
+    .map((student) => {
+      const marks: Record<string, string> = {}
+      for (const column of markByStudent) {
+        const mark = column.byStudent.get(student.id)
+        marks[column.assessment.id] = mark
+          ? `${mark.score}/${column.assessment.maxScore}${mark.grade ? ` ${mark.grade}` : ''}`
+          : '—'
+      }
+      return {
+        studentName: fullName(student),
+        studentNumber: student.studentNumber || '—',
+        marks,
+      }
+    })
+  return {
+    school: {
+      name: school.name,
+      motto: school.motto,
+      address: school.address,
+      phone: school.phone,
+      email: school.email,
+    },
+    className: input.className,
+    categoryLabel: SLIP_KINDS.find((k) => k[0] === input.kind)?.[1] ?? 'Results',
+    subjectName,
+    columns,
+    rows,
+  }
+}
+
 function currentMonthValue() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+const SLIP_KINDS = [
+  ['DAILY', 'Daily exercises'],
+  ['WEEKLY', 'Weekly tests'],
+  ['MONTHLY', 'Monthly tests'],
+  ['MOCK', 'Mock tests'],
+  ['TERMLY', 'End of term tests'],
+] as const
+
+type SlipKind = (typeof SLIP_KINDS)[number][0]
+
 function StaffClassResultsPage() {
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
   const isTeacher = user?.role === 'TEACHER'
+  const canPrintSlips = hasPermission('results.approve')
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [terms, setTerms] = useState<Term[]>([])
   const [subjects, setSubjects] = useState<Subject[]>([])
@@ -1266,6 +1441,9 @@ function StaffClassResultsPage() {
   const [ecdRows, setEcdRows] = useState<EcdChecklist[]>([])
   const [ecdSheet, setEcdSheet] = useState<EcdChecklist | null>(null)
   const [loadingEcd, setLoadingEcd] = useState(false)
+  const [slipKind, setSlipKind] = useState<SlipKind>('MONTHLY')
+  const [slipSubjectId, setSlipSubjectId] = useState('')
+  const [printing, setPrinting] = useState<'one' | 'class' | 'subject' | null>(null)
   const selectedClass = classes.find((c) => c.id === classId)
   const ecdMode = Boolean(selectedClass && isEcdClass(selectedClass))
 
@@ -1418,6 +1596,71 @@ function StaffClassResultsPage() {
   }, [selectedId, ecdMode, termId])
 
   const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students])
+
+  async function printSlips(scope: 'one' | 'class') {
+    if (!canPrintSlips || !classId) return
+    const ids = scope === 'one' ? (selectedId ? [selectedId] : []) : students.map((s) => s.id)
+    if (ids.length === 0) {
+      notify.error(scope === 'one' ? 'Select a learner first' : 'This class has no learners')
+      return
+    }
+    setPrinting(scope)
+    try {
+      const slips = await buildClassSlips({
+        classId,
+        className: selectedClass?.name || 'Class',
+        kind: slipKind,
+        studentIds: ids,
+        studentById,
+      })
+      if (slips.length === 0) {
+        notify.error('No released results in this category')
+        return
+      }
+      const label = SLIP_KINDS.find((k) => k[0] === slipKind)?.[1] ?? 'Results'
+      const who =
+        scope === 'one'
+          ? (studentById.get(selectedId) ? fullName(studentById.get(selectedId)!) : 'learner')
+          : selectedClass?.name || 'class'
+      await downloadResultSlipsPdf(slips, `${label}-${who}`)
+      notify.success(
+        scope === 'one'
+          ? 'Learner slip downloaded — all subjects on one sheet'
+          : `Downloaded ${slips.length} separate learner sheets`,
+      )
+    } catch (err) {
+      notify.error('Could not create the results slips', err instanceof Error ? err.message : undefined)
+    } finally {
+      setPrinting(null)
+    }
+  }
+
+  async function printSubjectSheet() {
+    if (!canPrintSlips || !classId || !slipSubjectId) return
+    setPrinting('subject')
+    try {
+      const sheet = await buildSubjectClassSheet({
+        classId,
+        className: selectedClass?.name || 'Class',
+        kind: slipKind,
+        subjectId: slipSubjectId,
+        students,
+      })
+      if (!sheet) {
+        notify.error('No released results for this subject in the chosen category')
+        return
+      }
+      await downloadSubjectClassSheetPdf(
+        sheet,
+        `${sheet.categoryLabel}-${sheet.subjectName}-${sheet.className}`,
+      )
+      notify.success('Class sheet downloaded — every learner on one sheet')
+    } catch (err) {
+      notify.error('Could not create the class sheet', err instanceof Error ? err.message : undefined)
+    } finally {
+      setPrinting(null)
+    }
+  }
   const selectedSubject = subjects.find((s) => s.id === subjectId)
   const ecdByStudent = useMemo(() => new Map(ecdRows.map((r) => [r.studentId, r])), [ecdRows])
   const visibleSubjects = useMemo(() => {
@@ -1570,6 +1813,65 @@ function StaffClassResultsPage() {
               </Select>
             </div>
           </div>
+
+          {canPrintSlips && classId && !ecdMode ? (
+            <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Result slip category</Label>
+                  <Select value={slipKind} onChange={(e) => setSlipKind(e.target.value as SlipKind)}>
+                    {SLIP_KINDS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Subject for the class sheet</Label>
+                  <Select value={slipSubjectId} onChange={(e) => setSlipSubjectId(e.target.value)}>
+                    <option value="">Select a subject…</option>
+                    {subjects.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <Button
+                  variant="outline"
+                  loading={printing === 'one'}
+                  disabled={!selectedId || printing !== null}
+                  onClick={() => void printSlips('one')}
+                >
+                  Selected learner — one sheet
+                </Button>
+                <Button
+                  variant="outline"
+                  loading={printing === 'class'}
+                  disabled={printing !== null}
+                  onClick={() => void printSlips('class')}
+                >
+                  All class results — separate sheets
+                </Button>
+                <Button
+                  loading={printing === 'subject'}
+                  disabled={!slipSubjectId || printing !== null}
+                  onClick={() => void printSubjectSheet()}
+                >
+                  This subject — one class sheet
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                A learner sheet lists every subject in the category on one page. All class results
+                gives each learner their own page. The subject sheet lists every learner in this
+                class on one sheet for the subject you pick. Click a learner in the table before
+                downloading a single slip.
+              </p>
+            </div>
+          ) : null}
 
           <SearchInput
             id="class-results-search"

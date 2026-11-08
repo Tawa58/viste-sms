@@ -41,6 +41,7 @@ import type {
   StudentPortalExam,
   StudentPortalFees,
   StudentPortalSubject,
+  StudentResultPaper,
   StudentResultPeriod,
   StudentResultRow,
   Subject,
@@ -230,13 +231,6 @@ type ResultEntry = {
   at: string
 }
 
-function monthLabel(month: string) {
-  const date = new Date(`${month}-01T12:00:00Z`)
-  return Number.isNaN(date.getTime())
-    ? month
-    : date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
-}
-
 /**
  * Per-subject rows for a set of marks. Several marks for one subject are averaged
  * by percentage (each test or term weighs the same) and re-graded on the school scale.
@@ -291,6 +285,30 @@ function summarize(entries: ResultEntry[], scale: GradingScale) {
   }
 }
 
+const RESULT_CATEGORIES = ['DAILY', 'WEEKLY', 'MONTHLY', 'MOCK', 'TERMLY'] as const
+
+const CATEGORY_COPY: Record<
+  (typeof RESULT_CATEGORIES)[number],
+  { label: string; basis: string }
+> = {
+  DAILY: { label: 'Daily exercises', basis: 'Daily exercises' },
+  WEEKLY: { label: 'Weekly tests', basis: 'Weekly tests' },
+  MONTHLY: { label: 'Monthly tests', basis: 'Monthly tests' },
+  MOCK: { label: 'Mock tests', basis: 'Mock tests' },
+  TERMLY: { label: 'End of term tests', basis: 'End of term tests' },
+}
+
+function isResultCategory(type: string): type is (typeof RESULT_CATEGORIES)[number] {
+  return (RESULT_CATEGORIES as readonly string[]).includes(type)
+}
+
+function sittingDate(a: Assessment) {
+  if (a.type === 'DAILY') return a.date
+  if (a.type === 'WEEKLY') return a.weekOf ?? a.date
+  if (a.type === 'TERMLY') return a.date
+  return a.month
+}
+
 function buildResultPeriods(
   ac: Academics,
   opts: {
@@ -299,121 +317,58 @@ function buildResultPeriods(
     teachersFor: (subjectId: string) => string | undefined
   },
 ): StudentResultPeriod[] {
-  const monthOf = (a: Assessment) =>
-    (a.type === 'DAILY'
-      ? (a.date ?? a.month)
-      : a.type === 'WEEKLY'
-        ? (a.weekOf ?? a.month)
-        : a.month
-    )?.slice(0, 7)
-  const monthly = new Map<string, ResultEntry[]>()
-  const termly = new Map<string, ResultEntry[]>()
+  const grouped = new Map<(typeof RESULT_CATEGORIES)[number], StudentResultPaper[]>()
+  let termlyTermId = ''
 
   for (const a of ac.assessments) {
-    if (!isReleased(a.status) || !(a.maxScore > 0)) continue
+    if (!isReleased(a.status) || !(a.maxScore > 0) || !isResultCategory(a.type)) continue
     const mark = ac.markByAssessment.get(a.id)
     if (!mark) continue
-    const entry: ResultEntry = {
+    if (a.type === 'TERMLY' && a.termId) termlyTermId = a.termId
+    const paper: StudentResultPaper = {
+      id: a.id,
       subject: ac.subjectName.get(a.subjectId) ?? 'Subject',
+      title: a.name,
+      satOn: sittingDate(a),
+      publishedAt: a.approvedAt,
       score: mark.score,
       maxScore: a.maxScore,
+      percent: a.maxScore > 0 ? (mark.score / a.maxScore) * 100 : 0,
       grade: mark.grade,
-      comment: mark.comment,
       teacherName: a.enteredByName || opts.teachersFor(a.subjectId),
-      at: mark.recordedAt ?? a.approvedAt ?? a.submittedAt ?? '',
+      comment: mark.comment,
     }
-    if (a.type === 'TERMLY') {
-      termly.set(a.termId, [...(termly.get(a.termId) ?? []), entry])
-      continue
-    }
-    const month = monthOf(a)
-    if (month && /^\d{4}-\d{2}$/.test(month)) monthly.set(month, [...(monthly.get(month) ?? []), entry])
-  }
-
-  const termById = new Map(ac.terms.map((t) => [t.id, t]))
-  const termForMonth = (month: string) =>
-    ac.terms.find((t) => t.startDate?.slice(0, 7) <= month && month <= (t.endDate?.slice(0, 7) ?? ''))
-  const termYear = (t: Term) => t.startDate?.slice(0, 4) ?? ''
-  const termLabel = (t: Term) => {
-    const year = termYear(t)
-    return year && !t.name.includes(year) ? `${t.name} ${year}` : t.name
+    grouped.set(a.type, [...(grouped.get(a.type) ?? []), paper])
   }
 
   const periods: StudentResultPeriod[] = []
-
-  for (const [month, entries] of monthly) {
+  for (const kind of RESULT_CATEGORIES) {
+    const papers = (grouped.get(kind) ?? []).sort(
+      (a, b) =>
+        (b.publishedAt || b.satOn || '').localeCompare(a.publishedAt || a.satOn || '') ||
+        a.subject.localeCompare(b.subject),
+    )
+    if (papers.length === 0) continue
+    const entries: ResultEntry[] = papers.map((p) => ({
+      subject: p.subject,
+      score: p.score,
+      maxScore: p.maxScore,
+      grade: p.grade,
+      comment: p.comment,
+      teacherName: p.teacherName,
+      at: p.publishedAt || p.satOn || '',
+    }))
+    const stamp = papers.find((p) => p.publishedAt || p.satOn)
+    const year = (stamp?.publishedAt || stamp?.satOn || '').slice(0, 4)
     periods.push({
-      id: `month:${month}`,
-      kind: 'MONTH',
-      label: monthLabel(month),
-      year: month.slice(0, 4),
-      sortKey: month,
-      basis: 'Tests and daily exercises',
-      classTeacherComment: opts.termComments.get(termForMonth(month)?.id ?? ''),
-      ...summarize(entries, opts.scale),
-    })
-  }
-
-  const termIds = new Set([...termly.keys()])
-  for (const month of monthly.keys()) {
-    const t = termForMonth(month)
-    if (t) termIds.add(t.id)
-  }
-  const termPeriods: StudentResultPeriod[] = []
-  for (const termId of termIds) {
-    const term = termById.get(termId)
-    const exams = termly.get(termId)
-    const entries =
-      exams ??
-      (term
-        ? [...monthly.entries()]
-            .filter(([m]) => termForMonth(m)?.id === termId)
-            .flatMap(([, list]) => list)
-        : [])
-    if (entries.length === 0) continue
-    const year = term ? termYear(term) : (entries[0]?.at.slice(0, 4) ?? '')
-    termPeriods.push({
-      id: `term:${termId}`,
-      kind: 'TERM',
-      label: term ? termLabel(term) : 'Term results',
+      id: kind,
+      kind,
+      label: CATEGORY_COPY[kind].label,
       year,
-      sortKey: term?.startDate ?? `${year}-${termId}`,
-      basis: exams ? 'End-of-term examinations' : 'Average of monthly tests',
-      classTeacherComment: opts.termComments.get(termId),
-      ...summarize(entries, opts.scale),
-    })
-  }
-  periods.push(...termPeriods)
-
-  const years = new Set(periods.map((p) => p.year).filter(Boolean))
-  for (const year of years) {
-    const terms = termPeriods
-      .filter((p) => p.year === year)
-      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
-    const entries: ResultEntry[] = terms.length
-      ? terms.flatMap((p) =>
-          p.rows.map((r) => ({
-            subject: r.subject,
-            score: r.percent,
-            maxScore: 100,
-            grade: r.grade,
-            comment: r.comment,
-            teacherName: r.teacherName,
-            at: p.sortKey,
-          })),
-        )
-      : [...monthly.entries()].filter(([m]) => m.startsWith(year)).flatMap(([, list]) => list)
-    if (entries.length === 0) continue
-    periods.push({
-      id: `year:${year}`,
-      kind: 'YEAR',
-      label: year,
-      year,
-      sortKey: year,
-      basis: terms.length
-        ? `Average of ${terms.map((t) => t.label.replace(` ${year}`, '')).join(', ')}`
-        : 'Average of tests and daily exercises',
-      classTeacherComment: [...terms].reverse().find((t) => t.classTeacherComment)?.classTeacherComment,
+      sortKey: papers[0]?.publishedAt || papers[0]?.satOn || kind,
+      basis: CATEGORY_COPY[kind].basis,
+      papers,
+      classTeacherComment: kind === 'TERMLY' ? opts.termComments.get(termlyTermId) : undefined,
       ...summarize(entries, opts.scale),
     })
   }
