@@ -14,6 +14,7 @@ import {
   resolveBillingTerm,
 } from '@/server/services/finance-service'
 import { getGradingScaleForEducationLevel, gradeFromScore } from '@/server/services/grading-service'
+import { formatMarkComponents } from '@/lib/exam-papers'
 import { formatUnitGrade, isUnitsScale, unitsFromScore } from '@/lib/grading'
 import { currentMonthPeriod, invoiceBalance, invoicesForBillingPeriod } from '@/lib/fees'
 import { getResultsPortal } from '@/server/services/results-service'
@@ -214,7 +215,11 @@ function buildExams(ac: Academics, canSeeScores: boolean): StudentPortalExam[] {
         maxScore: a.maxScore,
         status: out ? 'RESULTS_OUT' : 'MARKING',
         ...(out && mark && canSeeScores
-          ? { score: mark.score, grade: mark.grade }
+          ? {
+              score: mark.score,
+              grade: mark.grade,
+              breakdown: formatMarkComponents(mark.components) || undefined,
+            }
           : {}),
       }
     })
@@ -246,7 +251,10 @@ function summarize(entries: ResultEntry[], scale: GradingScale) {
       const single = sorted.length === 1 ? sorted[0] : null
       const averagedUnits = isUnitsScale(scale)
         ? Math.floor(
-            sorted.reduce((sum, e) => sum + unitsFromScore(e.score, scale.marksPerUnit), 0) /
+            sorted.reduce(
+              (sum, e) => sum + unitsFromScore(e.score, scale.marksPerUnit, e.maxScore),
+              0,
+            ) /
               sorted.length,
           )
         : null
@@ -335,6 +343,7 @@ function buildResultPeriods(
       maxScore: a.maxScore,
       percent: a.maxScore > 0 ? (mark.score / a.maxScore) * 100 : 0,
       grade: mark.grade,
+      breakdown: formatMarkComponents(mark.components) || undefined,
       teacherName: a.enteredByName || opts.teachersFor(a.subjectId),
       comment: mark.comment,
     }

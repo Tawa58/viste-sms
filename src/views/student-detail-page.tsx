@@ -850,7 +850,11 @@ export function StudentDetailPage() {
               {marks.map((m) => (
                 <li key={m.id} className="flex items-center justify-between py-2.5 text-sm">
                   <span>
-                    Score {m.score} · Grade {m.grade}
+                    Score {m.score}
+                    {m.components?.length
+                      ? ` (${m.components.map((c) => `${c.label} ${c.score}/${c.maxScore}`).join(', ')})`
+                      : ''}{' '}
+                    · Grade {m.grade}
                   </span>
                   <StatusBadge status={m.status} />
                 </li>

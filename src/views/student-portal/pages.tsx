@@ -334,8 +334,13 @@ function ResultSheet({ data, period }: { data: StudentPortalBundle; period: Stud
                     <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
                       {formatResultDate(paper.publishedAt)}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-center tabular-nums">
+                    <td className="px-3 py-2.5 text-center tabular-nums">
                       {formatMark(paper.score, paper.maxScore)}
+                      {paper.breakdown ? (
+                        <p className="mt-0.5 text-[11px] font-normal text-muted-foreground">
+                          {paper.breakdown}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <Badge variant={scoreTone(paper.percent)} className="min-w-8 justify-center">
@@ -916,6 +921,9 @@ export function MyExamsPage() {
                         <td className="px-4 py-2.5">{e.month ? monthLabel(e.month) : (e.termName ?? '—')}</td>
                         <td className="px-4 py-2.5 tabular-nums">
                           {e.score != null ? `${e.score}/${e.maxScore}` : locked ? 'Hidden' : '—'}
+                          {e.breakdown ? (
+                            <p className="text-[11px] text-muted-foreground">{e.breakdown}</p>
+                          ) : null}
                         </td>
                         <td className="px-4 py-2.5">
                           {e.grade ? (

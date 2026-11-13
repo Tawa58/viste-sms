@@ -150,7 +150,9 @@ function paintSlip(
       p.title,
       formatResultDate(p.satOn),
       formatResultDate(p.publishedAt),
-      formatMark(p.score, p.maxScore),
+      p.breakdown
+        ? `${formatMark(p.score, p.maxScore)}\n${p.breakdown}`
+        : formatMark(p.score, p.maxScore),
       p.grade || '—',
     ]),
     foot: [
@@ -171,10 +173,10 @@ function paintSlip(
     columnStyles: {
       0: { cellWidth: 8, halign: 'center' },
       1: { cellWidth: 32 },
-      2: { cellWidth: 42 },
-      3: { cellWidth: 24, halign: 'center' },
-      4: { cellWidth: 24, halign: 'center' },
-      5: { cellWidth: 18, halign: 'center' },
+      2: { cellWidth: 36 },
+      3: { cellWidth: 22, halign: 'center' },
+      4: { cellWidth: 22, halign: 'center' },
+      5: { cellWidth: 28, halign: 'center' },
       6: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
     },
     margin: { left: margin, right: margin, bottom: 16 },

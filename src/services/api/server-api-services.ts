@@ -665,10 +665,17 @@ export const apiCatalogService = {
     weekOf?: string
     termId?: string
     maxScore?: number
+    components?: {
+      key: 'paper1' | 'paper2' | 'paper3' | 'paper4' | 'practical'
+      label: string
+      maxScore: number
+      weight: number
+    }[]
     action: 'draft' | 'submit'
     entries: {
       studentId: string
       score: number
+      components?: { key: 'paper1' | 'paper2' | 'paper3' | 'paper4' | 'practical'; score: number }[]
       commentMode?: 'NONE' | 'AUTO' | 'CUSTOM'
       comment?: string
     }[]

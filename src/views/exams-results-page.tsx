@@ -8,6 +8,7 @@ import { Alert } from '@/components/shared/alert'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
@@ -18,7 +19,17 @@ import {
   gradeFromScore,
   isUnitsScale,
 } from '@/lib/grading'
-import { gradingTrackForLevel } from '@/lib/education-levels'
+import { gradingTrackForLevel, gradingTrackLabel, isFormOneToSixLevel } from '@/lib/education-levels'
+import {
+  describeExamRatio,
+  examComponentLabel,
+  formatMarkComponents,
+  isExamPaperPeriod,
+  normalizeExamScheme,
+  paperFinalPercent,
+  roundExamPercent,
+  type ExamComponentKey,
+} from '@/lib/exam-papers'
 import { EcdResultsSheet } from '@/components/shared/ecd-checklist-ticks'
 import {
   ECD_OVERALL_LABELS,
@@ -81,8 +92,33 @@ function currentWeekStart() {
 
 type StudentEntry = {
   score: string
+  papers: Record<string, string>
   commentMode: MarkCommentMode
   comment: string
+}
+
+type PaperDraft = {
+  key: ExamComponentKey
+  maxScore: string
+  weight: string
+}
+
+function applyPaperStructure(count: number, practical: boolean, prev: PaperDraft[]): PaperDraft[] {
+  const next: PaperDraft[] = []
+  for (let index = 1; index <= count; index++) {
+    const key = `paper${index}` as ExamComponentKey
+    next.push(prev.find((row) => row.key === key) ?? { key, maxScore: '100', weight: '1' })
+  }
+  if (practical) {
+    next.push(
+      prev.find((row) => row.key === 'practical') ?? {
+        key: 'practical',
+        maxScore: '100',
+        weight: '1',
+      },
+    )
+  }
+  return next
 }
 
 function assessmentKey(
@@ -115,7 +151,7 @@ export function ExaminationsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Examinations & marks"
-        description="Enter class marks by subject, submit for admin approval, then release to the student portal."
+        description="Form 1 to Form 6 exam subjects take Paper 1 to Paper 4, plus a practical, on End of term exam and Mock exam. Monthly, weekly, and daily tests stay one mark."
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Examinations' }]}
       />
 
@@ -178,8 +214,14 @@ function ClassSubjectMarksPanel() {
   const [entries, setEntries] = useState<Record<string, StudentEntry>>({})
   const [saving, setSaving] = useState(false)
   const [maxScoreInput, setMaxScoreInput] = useState('100')
+  const [paperCount, setPaperCount] = useState(1)
+  const [includePractical, setIncludePractical] = useState(false)
+  const [componentDrafts, setComponentDrafts] = useState<PaperDraft[]>([
+    { key: 'paper1', maxScore: '100', weight: '1' },
+  ])
   const [marks, setMarks] = useState<Mark[]>([])
   const maxScore = Number(maxScoreInput)
+  const isPaperPeriod = isExamPaperPeriod(periodType)
 
   useEffect(() => {
     void (async () => {
@@ -260,6 +302,9 @@ function ClassSubjectMarksPanel() {
     [students, classId],
   )
   const selectedClass = classes.find((c) => c.id === classId)
+  const formExamClass = isFormOneToSixLevel(
+    selectedClass?.educationLevelId || selectedClass?.level || selectedClass?.name,
+  )
   const activeScale = gradingScales?.[
     gradingTrackForLevel(selectedClass?.educationLevelId ?? selectedClass?.level)
   ]
@@ -311,6 +356,34 @@ function ClassSubjectMarksPanel() {
   }, [currentAssessment?.id, currentAssessment?.maxScore])
 
   useEffect(() => {
+    if (!isPaperPeriod) return
+    if (!currentAssessment || currentAssessment.id !== sheetId) {
+      setPaperCount(1)
+      setIncludePractical(false)
+      setComponentDrafts([{ key: 'paper1', maxScore: '100', weight: '1' }])
+      return
+    }
+    if (currentAssessment.components?.length) {
+      const papers = currentAssessment.components.filter((row) => row.key !== 'practical')
+      setPaperCount(papers.length || 1)
+      setIncludePractical(currentAssessment.components.some((row) => row.key === 'practical'))
+      setComponentDrafts(
+        currentAssessment.components.map((row) => ({
+          key: row.key,
+          maxScore: String(row.maxScore),
+          weight: String(row.weight),
+        })),
+      )
+      return
+    }
+    setPaperCount(1)
+    setIncludePractical(false)
+    setComponentDrafts([
+      { key: 'paper1', maxScore: String(currentAssessment.maxScore || 100), weight: '1' },
+    ])
+  }, [isPaperPeriod, sheetId, currentAssessment])
+
+  useEffect(() => {
     if (!currentAssessment) {
       setMarks([])
       return
@@ -340,20 +413,26 @@ function ClassSubjectMarksPanel() {
       const m = marks.find(
         (x) => x.assessmentId === currentAssessment.id && x.studentId === s.id,
       )
+      const papers: Record<string, string> = {}
+      if (m?.components?.length) {
+        for (const component of m.components) papers[component.key] = String(component.score)
+      }
       next[s.id] = {
-        score: m ? String(m.score) : '',
+        score: m && !m.components?.length ? String(m.score) : '',
+        papers,
         commentMode: m?.commentMode ?? defaultCommentMode,
         comment: m?.comment ?? '',
       }
     }
     setEntries(next)
-  }, [currentAssessment?.id, roster, marks, defaultCommentMode])
+  }, [currentAssessment?.id, roster, marks, defaultCommentMode, periodType, currentAssessment?.components])
 
   function setEntry(studentId: string, patch: Partial<StudentEntry>) {
     setEntries((prev) => ({
       ...prev,
       [studentId]: {
         score: prev[studentId]?.score ?? '',
+        papers: prev[studentId]?.papers ?? {},
         commentMode: prev[studentId]?.commentMode ?? defaultCommentMode,
         comment: prev[studentId]?.comment ?? '',
         ...patch,
@@ -361,7 +440,62 @@ function ClassSubjectMarksPanel() {
     }))
   }
 
+  function setPaperScore(studentId: string, key: string, value: string) {
+    setEntries((prev) => {
+      const current = prev[studentId]
+      return {
+        ...prev,
+        [studentId]: {
+          score: current?.score ?? '',
+          papers: { ...(current?.papers ?? {}), [key]: value },
+          commentMode: current?.commentMode ?? defaultCommentMode,
+          comment: current?.comment ?? '',
+        },
+      }
+    })
+  }
+
+  function currentScheme() {
+    return normalizeExamScheme(
+      componentDrafts.map((draft) => ({
+        key: draft.key,
+        label: examComponentLabel(draft.key),
+        maxScore: Number(draft.maxScore),
+        weight: Number(draft.weight),
+      })),
+    )
+  }
+
+  function paperSymbol(papers: Record<string, string> | undefined) {
+    const scheme = currentScheme()
+    if (!scheme.ok) return '—'
+    const final = paperFinalPercent(
+      scheme.components,
+      scheme.components.map((component) => ({
+        key: component.key,
+        score: Number(papers?.[component.key]),
+      })),
+    )
+    if (!final.complete || final.invalid) return '—'
+    return gradeFromScore(roundExamPercent(final.percent), 100, activeScale)
+  }
+
+  function paperPercent(papers: Record<string, string> | undefined) {
+    const scheme = currentScheme()
+    if (!scheme.ok) return null
+    const final = paperFinalPercent(
+      scheme.components,
+      scheme.components.map((component) => ({
+        key: component.key,
+        score: Number(papers?.[component.key]),
+      })),
+    )
+    if (!final.complete || final.invalid) return null
+    return roundExamPercent(final.percent)
+  }
+
   function previewGrade(scoreStr: string) {
+    if (!scoreStr.trim()) return '—'
     const score = Number(scoreStr)
     if (!Number.isFinite(score)) return '—'
     return gradeFromScore(score, maxScore, activeScale)
@@ -372,11 +506,17 @@ function ClassSubjectMarksPanel() {
       notify.error('Select class and subject')
       return
     }
-    if (!Number.isFinite(maxScore) || maxScore < 1 || maxScore > 1000) {
+    const scheme = isPaperPeriod ? currentScheme() : null
+    if (scheme && !scheme.ok) {
+      notify.error(scheme.message)
+      return
+    }
+    if (!isPaperPeriod && (!Number.isFinite(maxScore) || maxScore < 1 || maxScore > 1000)) {
       notify.error('Maximum mark must be between 1 and 1000')
       return
     }
     if (
+      !isPaperPeriod &&
       roster.some((s) => {
         const scoreText = entries[s.id]?.score.trim()
         if (!scoreText) return false
@@ -386,6 +526,28 @@ function ClassSubjectMarksPanel() {
     ) {
       notify.error(`A student's mark cannot exceed ${maxScore}`)
       return
+    }
+    if (scheme?.ok) {
+      for (const student of roster) {
+        const papers = entries[student.id]?.papers ?? {}
+        const filled = scheme.components.filter((component) => papers[component.key]?.trim())
+        if (filled.length === 0) continue
+        if (filled.length !== scheme.components.length) {
+          notify.error(`Enter every paper for ${fullName(student)}`)
+          return
+        }
+        const final = paperFinalPercent(
+          scheme.components,
+          scheme.components.map((component) => ({
+            key: component.key,
+            score: Number(papers[component.key]),
+          })),
+        )
+        if (final.invalid) {
+          notify.error(`${fullName(student)}: ${final.message}`)
+          return
+        }
+      }
     }
     if (periodType === 'DAILY' && !date) {
       notify.error('Select the exercise date')
@@ -406,10 +568,34 @@ function ClassSubjectMarksPanel() {
     const payloadEntries = roster
       .map((s) => {
         const row = entries[s.id]
+        const mode = row?.commentMode ?? defaultCommentMode
+        if (scheme?.ok) {
+          const papers = row?.papers ?? {}
+          if (scheme.components.some((component) => !papers[component.key]?.trim())) return null
+          const components = scheme.components.map((component) => ({
+            key: component.key,
+            score: Number(papers[component.key]),
+          }))
+          const final = paperFinalPercent(scheme.components, components)
+          if (!final.complete || final.invalid) return null
+          const score = roundExamPercent(final.percent)
+          const symbol = gradeFromScore(score, 100, activeScale)
+          return {
+            studentId: s.id,
+            score,
+            components,
+            commentMode: mode,
+            comment:
+              mode === 'CUSTOM'
+                ? row?.comment?.trim()
+                : mode === 'AUTO'
+                  ? autoCommentForGrade(symbol)
+                  : undefined,
+          }
+        }
         if (!row?.score.trim()) return null
         const score = Number(row?.score)
         if (!Number.isFinite(score) || score < 0) return null
-        const mode = row?.commentMode ?? defaultCommentMode
         return {
           studentId: s.id,
           score,
@@ -425,6 +611,7 @@ function ClassSubjectMarksPanel() {
       .filter(Boolean) as {
       studentId: string
       score: number
+      components?: { key: ExamComponentKey; score: number }[]
       commentMode: MarkCommentMode
       comment?: string
     }[]
@@ -445,7 +632,8 @@ function ClassSubjectMarksPanel() {
               periodType === 'MONTHLY' || periodType === 'MOCK' ? month : undefined,
             weekOf: periodType === 'WEEKLY' ? weekOf : undefined,
             termId: periodType === 'TERMLY' ? termId : undefined,
-            maxScore,
+            maxScore: scheme?.ok ? 100 : maxScore,
+            ...(scheme?.ok ? { components: scheme.components } : {}),
             action,
             entries: payloadEntries,
           }),
@@ -482,8 +670,9 @@ function ClassSubjectMarksPanel() {
       <CardHeader>
         <CardTitle>Create assessment & enter marks</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Choose daily, monthly, weekly, mock, or end-of-term. Set the maximum mark, enter scores,
-          add custom comments, or use system auto comments from the grade. Submit for admin approval.
+          Form 1 to Form 6 exam subjects use <strong>End of term exam</strong> or{' '}
+          <strong>Mock exam</strong>. Those sheets take Paper 1, Paper 2, Paper 3, Paper 4, and a
+          practical where the subject has one. Monthly, weekly, and daily tests stay one mark.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -497,11 +686,11 @@ function ClassSubjectMarksPanel() {
         <div className="flex flex-wrap gap-2">
           {(
             [
+              ['TERMLY', 'End of term exam'],
+              ['MOCK', 'Mock exam'],
               ['MONTHLY', 'Monthly'],
-              ['DAILY', 'Daily'],
               ['WEEKLY', 'Weekly'],
-              ['MOCK', 'Mock'],
-              ['TERMLY', 'End of term'],
+              ['DAILY', 'Daily'],
             ] as const
           ).map(([value, label]) => (
             <Button
@@ -578,22 +767,135 @@ function ClassSubjectMarksPanel() {
               <option value="CUSTOM">Custom comment per student</option>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>Maximum mark</Label>
-            <Input
-              type="number"
-              min={1}
-              max={1000}
-              value={maxScoreInput}
-              onChange={(e) => setMaxScoreInput(e.target.value)}
-            />
-          </div>
+          {isPaperPeriod ? null : (
+            <div className="space-y-1.5">
+              <Label>Maximum mark</Label>
+              <Input
+                type="number"
+                min={1}
+                max={1000}
+                value={maxScoreInput}
+                onChange={(e) => setMaxScoreInput(e.target.value)}
+              />
+            </div>
+          )}
         </div>
+
+        {formExamClass && !isPaperPeriod ? (
+          <Alert title="Form 1–6 exam papers are not on this sheet" tone="info">
+            This monthly, weekly, or daily test is still one mark. For a Form 1 to Form 6 exam
+            subject, open End of term exam or Mock exam to enter Paper 1 to Paper 4 and a practical.
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={() => setPeriodType('TERMLY')}>
+                End of term exam
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setPeriodType('MOCK')}>
+                Mock exam
+              </Button>
+            </div>
+          </Alert>
+        ) : null}
+
+        {isPaperPeriod ? (
+          <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+            <div>
+              <p className="text-sm font-semibold">
+                {formExamClass ? 'Form 1–6 papers for this subject' : 'Papers for this subject'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Choose how many papers were written. Add a practical if this subject has one, then
+                enter each learner’s mark in the columns below.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="space-y-1.5">
+                <Label>Papers written</Label>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4].map((count) => (
+                    <Button
+                      key={count}
+                      type="button"
+                      size="sm"
+                      variant={paperCount === count ? 'default' : 'outline'}
+                      onClick={() => {
+                        setPaperCount(count)
+                        setComponentDrafts((prev) => applyPaperStructure(count, includePractical, prev))
+                      }}
+                    >
+                      {count}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <label className="flex items-center gap-2 pb-1 text-sm">
+                <Checkbox
+                  checked={includePractical}
+                  onCheckedChange={(checked) => {
+                    const on = checked === true
+                    setIncludePractical(on)
+                    setComponentDrafts((prev) => applyPaperStructure(paperCount, on, prev))
+                  }}
+                />
+                Practical assessment
+              </label>
+            </div>
+            <div className="space-y-3">
+              {componentDrafts.map((draft) => (
+                <div key={draft.key} className="grid grid-cols-2 gap-2">
+                  <p className="col-span-2 text-sm font-medium">{examComponentLabel(draft.key)}</p>
+                  <div className="space-y-1">
+                    <Label>Maximum mark</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={draft.maxScore}
+                      onChange={(e) =>
+                        setComponentDrafts((prev) =>
+                          prev.map((row) =>
+                            row.key === draft.key ? { ...row, maxScore: e.target.value } : row,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Ratio</Label>
+                    <Input
+                      type="number"
+                      min={0.01}
+                      step="0.01"
+                      value={draft.weight}
+                      onChange={(e) =>
+                        setComponentDrafts((prev) =>
+                          prev.map((row) =>
+                            row.key === draft.key ? { ...row, weight: e.target.value } : row,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {(() => {
+                const scheme = currentScheme()
+                const track = gradingTrackLabel(
+                  gradingTrackForLevel(selectedClass?.educationLevelId ?? selectedClass?.level),
+                )
+                if (!scheme.ok) return scheme.message
+                return `${describeExamRatio(scheme.components)}. The final symbol uses the ${track} scale.`
+              })()}
+            </p>
+          </div>
+        ) : null}
 
         {currentAssessment ? (
           <p className="text-xs text-muted-foreground">
-            Current sheet: <StatusBadge status={currentAssessment.status} />{' '}
-            {currentAssessment.name}
+            Current sheet:{' '}
+            <StatusBadge status={currentAssessment.status || 'DRAFT'} />{' '}
+            {currentAssessment.name || 'Mark sheet'}
           </p>
         ) : null}
 
@@ -606,8 +908,20 @@ function ClassSubjectMarksPanel() {
                 <tr>
                   <th className="px-3 py-2">#</th>
                   <th className="px-3 py-2">Student</th>
-                  <th className="px-3 py-2">Mark /{maxScore}</th>
-                  <th className="px-3 py-2">{isUnitsScale(activeScale) ? 'Units' : 'Grade'}</th>
+                  {isPaperPeriod ? (
+                    componentDrafts.map((draft) => (
+                      <th key={draft.key} className="px-3 py-2">
+                        {examComponentLabel(draft.key)}
+                        {draft.maxScore ? ` /${draft.maxScore}` : ''}
+                      </th>
+                    ))
+                  ) : (
+                    <th className="px-3 py-2">Mark /{maxScore}</th>
+                  )}
+                  {isPaperPeriod ? <th className="px-3 py-2">Final %</th> : null}
+                  <th className="px-3 py-2">
+                    {isPaperPeriod ? 'Symbol' : isUnitsScale(activeScale) ? 'Units' : 'Grade'}
+                  </th>
                   {showCommentColumn ? (
                     <th className="px-3 py-2">
                       {defaultCommentMode === 'AUTO' ? 'Auto comment' : 'Teacher comment'}
@@ -619,10 +933,12 @@ function ClassSubjectMarksPanel() {
                 {roster.map((s, i) => {
                   const row = entries[s.id] ?? {
                     score: '',
+                    papers: {},
                     commentMode: defaultCommentMode,
                     comment: '',
                   }
-                  const grade = previewGrade(row.score)
+                  const grade = isPaperPeriod ? paperSymbol(row.papers) : previewGrade(row.score)
+                  const finalPercent = isPaperPeriod ? paperPercent(row.papers) : null
                   const showCustom =
                     defaultCommentMode === 'CUSTOM' || row.commentMode === 'CUSTOM'
                   return (
@@ -633,17 +949,44 @@ function ClassSubjectMarksPanel() {
                         <span className="ml-2 text-xs font-normal text-muted-foreground">
                           {s.studentNumber}
                         </span>
+                        {isPaperPeriod &&
+                        row.score &&
+                        !Object.values(row.papers).some((value) => value.trim()) ? (
+                          <p className="text-xs font-normal text-muted-foreground">
+                            Previous single score {row.score}. Enter each paper to replace it.
+                          </p>
+                        ) : null}
                       </td>
-                      <td className="px-3 py-2">
-                        <Input
-                          type="number"
-                          min={0}
-                          max={maxScore}
-                          className="w-24"
-                          value={row.score}
-                          onChange={(e) => setEntry(s.id, { score: e.target.value })}
-                        />
-                      </td>
+                      {isPaperPeriod ? (
+                        componentDrafts.map((draft) => (
+                          <td key={draft.key} className="px-3 py-2">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={Number(draft.maxScore) || undefined}
+                              className="w-24"
+                              value={row.papers[draft.key] ?? ''}
+                              onChange={(e) => setPaperScore(s.id, draft.key, e.target.value)}
+                            />
+                          </td>
+                        ))
+                      ) : (
+                        <td className="px-3 py-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={maxScore}
+                            className="w-24"
+                            value={row.score}
+                            onChange={(e) => setEntry(s.id, { score: e.target.value })}
+                          />
+                        </td>
+                      )}
+                      {isPaperPeriod ? (
+                        <td className="px-3 py-2 tabular-nums">
+                          {finalPercent == null ? '—' : `${finalPercent}%`}
+                        </td>
+                      ) : null}
                       <td className="px-3 py-2 font-semibold">{grade}</td>
                       {showCustom ? (
                         <td className="px-3 py-2">
@@ -662,7 +1005,7 @@ function ClassSubjectMarksPanel() {
                         </td>
                       ) : defaultCommentMode === 'AUTO' ? (
                         <td className="px-3 py-2 text-xs text-muted-foreground">
-                          {row.score ? autoCommentForGrade(grade) : '—'}
+                          {grade !== '—' ? autoCommentForGrade(grade) : '—'}
                         </td>
                       ) : showCommentColumn ? (
                         <td className="px-3 py-2 text-muted-foreground">—</td>
@@ -1267,6 +1610,7 @@ function paperFrom(assessment: Assessment, mark: Mark): StudentResultPaper {
     maxScore: assessment.maxScore,
     percent,
     grade: mark.grade,
+    breakdown: formatMarkComponents(mark.components) || undefined,
     teacherName: assessment.enteredByName,
     comment: mark.comment,
   }
@@ -1377,8 +1721,9 @@ async function buildSubjectClassSheet(input: {
       const marks: Record<string, string> = {}
       for (const column of markByStudent) {
         const mark = column.byStudent.get(student.id)
+        const breakdown = mark ? formatMarkComponents(mark.components) : ''
         marks[column.assessment.id] = mark
-          ? `${mark.score}/${column.assessment.maxScore}${mark.grade ? ` ${mark.grade}` : ''}`
+          ? `${breakdown ? `${breakdown} → ` : ''}${mark.score}/${column.assessment.maxScore}${mark.grade ? ` ${mark.grade}` : ''}`
           : '—'
       }
       return {

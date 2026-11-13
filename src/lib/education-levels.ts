@@ -61,6 +61,14 @@ export function gradingTrackForLevel(
   return 'FORM_1_4'
 }
 
+const FORM_ONE_TO_SIX = new Set(['form-1', 'form-2', 'form-3', 'form-4', 'form-5', 'form-6'])
+
+/** True for Form 1, 2, 3, 4, 5, or 6, including class names such as "Form 4A". */
+export function isFormOneToSixLevel(raw: string | undefined | null) {
+  const id = resolveEducationLevelId(raw)
+  return id != null && FORM_ONE_TO_SIX.has(id)
+}
+
 export function gradingTrackLabel(track: GradingTrackId) {
   switch (track) {
     case 'ECD':

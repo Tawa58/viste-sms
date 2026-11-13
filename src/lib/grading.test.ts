@@ -6,8 +6,14 @@ import {
   unitsFromScore,
 } from '@/lib/grading'
 
+const unitsScale = {
+  scheme: 'UNITS' as const,
+  marksPerUnit: 10,
+  bands: [{ grade: 'A', minPercent: 80, maxPercent: 100 }],
+}
+
 describe('primary units grading', () => {
-  it('counts whole units from marksPerUnit', () => {
+  it('counts whole units from a mark out of 100', () => {
     expect(unitsFromScore(35, 10)).toBe(3)
     expect(unitsFromScore(20, 10)).toBe(2)
     expect(unitsFromScore(9, 10)).toBe(0)
@@ -15,14 +21,18 @@ describe('primary units grading', () => {
     expect(formatUnitGrade(2)).toBe('2 units')
   })
 
+  it('scales the mark to the maximum before counting units', () => {
+    expect(unitsFromScore(9, 10, 10)).toBe(9)
+    expect(unitsFromScore(10, 10, 10)).toBe(10)
+    expect(gradeFromScore(9, 10, unitsScale)).toBe('9 units')
+    expect(gradeFromScore(10, 10, unitsScale)).toBe('10 units')
+    expect(autoCommentForGrade(gradeFromScore(9, 10, unitsScale))).toMatch(/Excellent/)
+    expect(autoCommentForGrade(gradeFromScore(10, 10, unitsScale))).toMatch(/Excellent/)
+    expect(autoCommentForGrade(gradeFromScore(1, 10, unitsScale))).toMatch(/Below expected/)
+  })
+
   it('uses units instead of letter grades when the scale is UNITS', () => {
-    expect(
-      gradeFromScore(45, 50, {
-        scheme: 'UNITS',
-        marksPerUnit: 10,
-        bands: [{ grade: 'A', minPercent: 80, maxPercent: 100 }],
-      }),
-    ).toBe('4 units')
+    expect(gradeFromScore(45, 50, unitsScale)).toBe('9 units')
   })
 
   it('keeps letter grades for percent-band scales', () => {
