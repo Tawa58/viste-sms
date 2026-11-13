@@ -589,7 +589,7 @@ function ClassSubjectMarksPanel() {
               mode === 'CUSTOM'
                 ? row?.comment?.trim()
                 : mode === 'AUTO'
-                  ? autoCommentForGrade(symbol)
+                  ? autoCommentForGrade(symbol, activeScale?.bands)
                   : undefined,
           }
         }
@@ -604,7 +604,7 @@ function ClassSubjectMarksPanel() {
             mode === 'CUSTOM'
               ? row?.comment?.trim()
               : mode === 'AUTO'
-                ? autoCommentForGrade(previewGrade(String(score)))
+                ? autoCommentForGrade(previewGrade(String(score)), activeScale?.bands)
                 : undefined,
         }
       })
@@ -1005,7 +1005,7 @@ function ClassSubjectMarksPanel() {
                         </td>
                       ) : defaultCommentMode === 'AUTO' ? (
                         <td className="px-3 py-2 text-xs text-muted-foreground">
-                          {grade !== '—' ? autoCommentForGrade(grade) : '—'}
+                          {grade !== '—' ? autoCommentForGrade(grade, activeScale?.bands) : '—'}
                         </td>
                       ) : showCommentColumn ? (
                         <td className="px-3 py-2 text-muted-foreground">—</td>

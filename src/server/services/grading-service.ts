@@ -5,7 +5,12 @@ import { requirePermission } from '@/server/authorization/permissions'
 import { badRequest } from '@/server/errors'
 import { getDoc, setDoc } from '@/server/repositories/firestore-repo'
 import { gradingTrackForLevel, gradingTrackLabel } from '@/lib/education-levels'
-import { gradeFromScore as gradeFromScoreLib } from '@/lib/grading'
+import {
+  DEFAULT_PRIMARY_UNIT_BANDS,
+  gradeFromScore as gradeFromScoreLib,
+  isPrimaryUnitBands,
+  validatePrimaryUnitBands,
+} from '@/lib/grading'
 import type { GradeBand, GradingScale, GradingScalesBundle, GradingTrack } from '@/types'
 
 const TRACKS: GradingTrack[] = ['ECD', 'PRIMARY', 'FORM_1_4', 'FORM_5_6']
@@ -32,11 +37,10 @@ const STANDARD_BANDS: GradeBand[] = [
 /** Default ECD scale; schools can customize these percentage bands in settings. */
 export const DEFAULT_ECD_SCALE = defaultScale('ECD', STANDARD_BANDS)
 
-/** Default Grades 1–7 scale uses units (admin sets marks per unit). */
+/** Default Grades 1–7 scale: units 1–9, each with a percentage range and comment. */
 export const DEFAULT_PRIMARY_SCALE: GradingScale = {
-  ...defaultScale('PRIMARY', STANDARD_BANDS),
+  ...defaultScale('PRIMARY', DEFAULT_PRIMARY_UNIT_BANDS.map((band) => ({ ...band }))),
   scheme: 'UNITS',
-  marksPerUnit: 10,
 }
 
 /** Zimbabwe-style O-Level defaults (Form 1–4). */
@@ -88,16 +92,21 @@ function normalizeScale(
 ): GradingScale {
   const fallback = defaultForTrack(track)
   if (!row?.bands?.length) return fallback
+  const scheme =
+    row.scheme ??
+    (track === 'PRIMARY' || typeof row.marksPerUnit === 'number' ? 'UNITS' : 'PERCENT_BANDS')
+  const bands =
+    scheme === 'UNITS' && !isPrimaryUnitBands(row.bands)
+      ? fallback.bands.map((band) => ({ ...band }))
+      : row.bands
   return {
     id: track,
     track,
     label: gradingTrackLabel(track),
     passMark: row.passMark ?? fallback.passMark,
-    bands: row.bands,
-    scheme:
-      row.scheme ??
-      (typeof row.marksPerUnit === 'number' ? 'UNITS' : 'PERCENT_BANDS'),
-    marksPerUnit: row.marksPerUnit ?? fallback.marksPerUnit,
+    bands: bands ?? fallback.bands,
+    scheme,
+    marksPerUnit: row.marksPerUnit,
     updatedAt: row.updatedAt,
     updatedBy: row.updatedBy,
   }
@@ -192,15 +201,16 @@ export async function updateGradingScaleService(
   requirePermission(session, 'settings.manage')
   if (!TRACKS.includes(input.track)) throw badRequest('Invalid grading track')
   const scheme = input.scheme ?? (input.track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')
+  let bands: GradeBand[]
   if (scheme === 'UNITS') {
-    if (!input.marksPerUnit || input.marksPerUnit < 1 || input.marksPerUnit > 200) {
-      throw badRequest('Set how many marks make 1 unit (1–200)')
-    }
+    const checked = validatePrimaryUnitBands(
+      input.bands?.length ? input.bands : defaultForTrack(input.track).bands,
+    )
+    if (!checked.ok) throw badRequest(checked.message)
+    bands = checked.bands
+  } else {
+    bands = validateBands(input.bands)
   }
-  const bands =
-    scheme === 'UNITS' && (!input.bands || input.bands.length === 0)
-      ? defaultForTrack(input.track).bands
-      : validateBands(input.bands)
   if (input.passMark < 0 || input.passMark > 100) {
     throw badRequest('Pass mark must be between 0 and 100')
   }

@@ -44,7 +44,7 @@ import {
   roundExamPercent,
   snapshotPaperMarks,
 } from '@/lib/exam-papers'
-import { gradeFromScore } from '@/lib/grading'
+import { DEFAULT_PRIMARY_UNIT_BANDS, gradeFromScore } from '@/lib/grading'
 import type {
   Announcement,
   AppUser,
@@ -1050,15 +1050,7 @@ const mockCatalogService = {
         label: 'Grades 1–7',
         passMark: 50,
         scheme: 'UNITS' as const,
-        marksPerUnit: 10,
-        bands: [
-          { grade: 'A', minPercent: 80, maxPercent: 100 },
-          { grade: 'B', minPercent: 70, maxPercent: 79 },
-          { grade: 'C', minPercent: 60, maxPercent: 69 },
-          { grade: 'D', minPercent: 50, maxPercent: 59 },
-          { grade: 'E', minPercent: 40, maxPercent: 49 },
-          { grade: 'U', minPercent: 0, maxPercent: 39 },
-        ],
+        bands: DEFAULT_PRIMARY_UNIT_BANDS.map((band) => ({ ...band })),
       },
       FORM_1_4: {
         id: 'FORM_1_4' as const,
@@ -1117,15 +1109,7 @@ const mockCatalogService = {
         label: 'Grades 1–7',
         passMark: 50,
         scheme: 'UNITS' as const,
-        marksPerUnit: 10,
-        bands: [
-          { grade: 'A', minPercent: 80, maxPercent: 100 },
-          { grade: 'B', minPercent: 70, maxPercent: 79 },
-          { grade: 'C', minPercent: 60, maxPercent: 69 },
-          { grade: 'D', minPercent: 50, maxPercent: 59 },
-          { grade: 'E', minPercent: 40, maxPercent: 49 },
-          { grade: 'U', minPercent: 0, maxPercent: 39 },
-        ],
+        bands: DEFAULT_PRIMARY_UNIT_BANDS.map((band) => ({ ...band })),
       },
       FORM_1_4: {
         id: 'FORM_1_4' as const,

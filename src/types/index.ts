@@ -306,6 +306,8 @@ export interface GradeBand {
   grade: string
   minPercent: number
   maxPercent: number
+  /** Remark written on the mark when comments are automatic. */
+  comment?: string
 }
 
 /** School grading schemes, from ECD through A-Level. */
@@ -321,7 +323,7 @@ export interface GradingScale {
   bands: GradeBand[]
   /** PRIMARY uses units by default; secondary uses letter bands. */
   scheme?: GradingScheme
-  /** How many raw marks equal one unit (admin-set). Used when scheme is UNITS. */
+  /** Older step size. Grades 1–7 use the 1–9 percentage bands instead. */
   marksPerUnit?: number
   updatedAt?: string
   updatedBy?: string

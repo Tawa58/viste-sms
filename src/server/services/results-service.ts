@@ -143,11 +143,12 @@ function buildMarkComment(
   mode: CommentMode | undefined,
   grade: string,
   custom?: string,
+  bands?: import('@/types').GradeBand[],
 ): { commentMode: MarkCommentMode; comment?: string } {
   const commentMode = (mode ?? 'NONE') as MarkCommentMode
   return {
     commentMode,
-    comment: resolveMarkComment({ mode: commentMode, grade, customComment: custom }),
+    comment: resolveMarkComment({ mode: commentMode, grade, customComment: custom, bands }),
   }
 }
 
@@ -206,7 +207,7 @@ export async function upsertMark(
     resolved?.grade ||
     input.grade?.trim() ||
     gradeFromScore(input.score, assessment.maxScore || 100, scale)
-  const remark = buildMarkComment(input.commentMode, grade, input.comment)
+  const remark = buildMarkComment(input.commentMode, grade, input.comment, scale.bands)
   const row: Mark = {
     id,
     assessmentId: input.assessmentId,
@@ -693,7 +694,7 @@ export async function submitClassSubjectMarks(
       : null
     const score = resolved?.score ?? entry.score
     const grade = resolved?.grade ?? gradeFromScore(entry.score, assessmentMax, studentScale)
-    const remark = buildMarkComment(entry.commentMode, grade, entry.comment)
+    const remark = buildMarkComment(entry.commentMode, grade, entry.comment, studentScale.bands)
     const row: Mark = {
       id: markId,
       assessmentId,
