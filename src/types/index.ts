@@ -628,6 +628,26 @@ export interface Examination {
   status: 'SCHEDULED' | 'ONGOING' | 'COMPLETED'
 }
 
+export type ExamComponentKey = 'paper1' | 'paper2' | 'paper3' | 'paper4' | 'practical'
+
+/** One written paper or practical on a mock / end-of-term exam. */
+export interface ExamComponent {
+  key: ExamComponentKey
+  label: string
+  maxScore: number
+  /** Share of the final mark. Ratios are normalized, so 2:1 and 40:20 match. */
+  weight: number
+}
+
+/** Paper mark stored with the student result. */
+export interface MarkComponentScore {
+  key: ExamComponentKey
+  label: string
+  score: number
+  maxScore: number
+  weight: number
+}
+
 export interface Assessment {
   id: string
   examinationId?: string
@@ -638,6 +658,11 @@ export interface Assessment {
   streamId: string
   termId: string
   maxScore: number
+  /**
+   * Mock and end-of-term paper structure. When set, `maxScore` is 100 and
+   * each student mark is the weighted percentage.
+   */
+  components?: ExamComponent[]
   status: MarkWorkflowStatus
   /** Class for class-scoped assessments (e.g. monthly / termly entry). */
   classId?: string
@@ -661,8 +686,11 @@ export interface Mark {
   id: string
   assessmentId: string
   studentId: string
+  /** Single raw score, or the weighted final percentage when `components` is set. */
   score: number
   grade: string
+  /** Paper and practical marks that produced `score`. */
+  components?: MarkComponentScore[]
   status: MarkWorkflowStatus
   /** How the comment was produced. */
   commentMode?: MarkCommentMode
@@ -1295,6 +1323,8 @@ export interface StudentPortalExam {
   /** Present only when results are out and not locked by fees. */
   score?: number
   grade?: string
+  /** Paper breakdown, e.g. "P1 40/50 · P2 70/100". */
+  breakdown?: string
 }
 
 export interface StudentPortalDocument {
@@ -1338,6 +1368,8 @@ export interface StudentResultPaper {
   maxScore: number
   percent: number
   grade: string
+  /** Paper and practical marks when the exam was not a single score. */
+  breakdown?: string
   teacherName?: string
   comment?: string
 }

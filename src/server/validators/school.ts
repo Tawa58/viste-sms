@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { normalizeExamScheme, type ExamComponent } from '@/lib/exam-papers'
 import { emailSchema, idSchema, isoDateSchema } from '@/server/validators/common'
 
 export const studentStatusSchema = z.enum([
@@ -317,12 +318,28 @@ export const paymentCreateSchema = z.object({
   idempotencyKey: z.string().min(8).max(128).optional(),
 })
 
+const examComponentKeySchema = z.enum(['paper1', 'paper2', 'paper3', 'paper4', 'practical'])
+
+const examComponentSchema = z.object({
+  key: examComponentKeySchema,
+  label: z.string().trim().min(1).max(40),
+  maxScore: z.number().min(1).max(1000),
+  weight: z.number().positive().max(1000),
+})
+
+const markComponentInputSchema = z.object({
+  key: examComponentKeySchema,
+  score: z.number().min(0).max(1000),
+})
+
 export const markUpsertSchema = z.object({
   assessmentId: idSchema,
   studentId: idSchema,
   score: z.number().min(0).max(1000),
+  /** Paper marks for a mock or end-of-term exam that uses a paper scheme. */
+  components: z.array(markComponentInputSchema).max(5).optional(),
   /** Optional — server assigns from grading scale when omitted. */
-  grade: z.string().min(1).max(8).optional(),
+  grade: z.string().min(1).max(16).optional(),
   commentMode: z.enum(['NONE', 'AUTO', 'CUSTOM']).optional(),
   comment: z.string().max(1000).optional(),
 })
@@ -330,6 +347,7 @@ export const markUpsertSchema = z.object({
 const markEntrySchema = z.object({
   studentId: idSchema,
   score: z.number().min(0).max(1000),
+  components: z.array(markComponentInputSchema).max(5).optional(),
   commentMode: z.enum(['NONE', 'AUTO', 'CUSTOM']).default('NONE'),
   comment: z.string().max(1000).optional(),
 })
@@ -361,6 +379,11 @@ export const classSubjectMarksSchema = z
     /** Required for TERMLY */
     termId: idSchema.optional(),
     maxScore: z.number().min(1).max(1000).default(100),
+    /**
+     * Mock and end-of-term only. Each paper's maximum and ratio.
+     * The stored score is then the weighted percentage out of 100.
+     */
+    components: z.array(examComponentSchema).min(1).max(5).optional(),
     entries: z.array(markEntrySchema).min(1).max(200),
     /**
      * draft = DRAFT
@@ -397,7 +420,49 @@ export const classSubjectMarksSchema = z
         path: ['termId'],
       })
     }
+    const paperPeriod = val.periodType === 'MOCK' || val.periodType === 'TERMLY'
+    if (val.components?.length && !paperPeriod) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Paper marks are only used for mock and end-of-term exams',
+        path: ['components'],
+      })
+    }
+    let scheme: ExamComponent[] | null = null
+    if (val.components?.length && paperPeriod) {
+      const normalized = normalizeExamScheme(val.components)
+      if (!normalized.ok) {
+        ctx.addIssue({
+          code: 'custom',
+          message: normalized.message,
+          path: ['components'],
+        })
+      } else {
+        scheme = normalized.components
+      }
+    }
     val.entries.forEach((entry, index) => {
+      if (scheme) {
+        for (const component of scheme) {
+          const found = entry.components?.find((row) => row.key === component.key)
+          if (!found) {
+            ctx.addIssue({
+              code: 'custom',
+              message: `Enter a mark for ${component.label}`,
+              path: ['entries', index, 'components'],
+            })
+            continue
+          }
+          if (found.score > component.maxScore) {
+            ctx.addIssue({
+              code: 'custom',
+              message: `${component.label} cannot exceed ${component.maxScore}`,
+              path: ['entries', index, 'components'],
+            })
+          }
+        }
+        return
+      }
       if (entry.score > val.maxScore) {
         ctx.addIssue({
           code: 'custom',

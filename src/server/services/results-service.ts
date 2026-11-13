@@ -11,6 +11,14 @@ import type {
 } from '@/server/validators/school'
 import { getGradingScaleForEducationLevel, gradeFromScore } from '@/server/services/grading-service'
 import { resolveMarkComment, type CommentMode } from '@/lib/grading'
+import {
+  isExamPaperPeriod,
+  normalizeExamScheme,
+  paperFinalPercent,
+  roundExamPercent,
+  snapshotPaperMarks,
+  type ExamComponent,
+} from '@/lib/exam-papers'
 import type {
   Assessment,
   Mark,
@@ -113,6 +121,24 @@ async function assertTeacherCanEnter(
   }
 }
 
+function resolvePaperScores(
+  schemeInput: ExamComponent[],
+  entryScores: { key: string; score: number }[] | undefined,
+  scale: Parameters<typeof gradeFromScore>[2],
+) {
+  const normalized = normalizeExamScheme(schemeInput)
+  if (!normalized.ok) throw badRequest(normalized.message)
+  const final = paperFinalPercent(normalized.components, entryScores ?? [])
+  if (final.invalid) throw badRequest(final.message)
+  if (!final.complete) throw badRequest('Enter a mark for every paper')
+  const score = roundExamPercent(final.percent)
+  return {
+    score,
+    grade: gradeFromScore(score, 100, scale),
+    components: snapshotPaperMarks(normalized.components, entryScores ?? []),
+  }
+}
+
 function buildMarkComment(
   mode: CommentMode | undefined,
   grade: string,
@@ -164,19 +190,30 @@ export async function upsertMark(
   const scale = await getGradingScaleForEducationLevel(
     student?.educationLevelId || klass?.educationLevelId || klass?.level,
   )
-  if (assessment.maxScore > 0 && input.score > assessment.maxScore) {
+  const paperMarked = Boolean(assessment.components?.length)
+  if (paperMarked && !isExamPaperPeriod(assessment.type)) {
+    throw badRequest('Paper marks are only used for mock and end-of-term exams')
+  }
+  if (!paperMarked && assessment.maxScore > 0 && input.score > assessment.maxScore) {
     throw badRequest(`Score cannot exceed the maximum mark of ${assessment.maxScore}`)
   }
 
+  const resolved = paperMarked
+    ? resolvePaperScores(assessment.components ?? [], input.components, scale)
+    : null
+  const score = resolved?.score ?? input.score
   const grade =
-    input.grade?.trim() || gradeFromScore(input.score, assessment.maxScore || 100, scale)
+    resolved?.grade ||
+    input.grade?.trim() ||
+    gradeFromScore(input.score, assessment.maxScore || 100, scale)
   const remark = buildMarkComment(input.commentMode, grade, input.comment)
   const row: Mark = {
     id,
     assessmentId: input.assessmentId,
     studentId: input.studentId,
-    score: input.score,
+    score,
     grade,
+    ...(resolved ? { components: resolved.components } : {}),
     status: current?.status ?? 'DRAFT',
     commentMode: remark.commentMode,
     comment: remark.comment,
@@ -586,6 +623,17 @@ export async function submitClassSubjectMarks(
     throw forbidden('Submitted results are with admin. Wait until they are denied before editing.')
   }
 
+  const paperScheme =
+    input.components?.length && isExamPaperPeriod(periodType)
+      ? normalizeExamScheme(input.components)
+      : null
+  if (input.components?.length && !isExamPaperPeriod(periodType)) {
+    throw badRequest('Paper marks are only used for mock and end-of-term exams')
+  }
+  if (paperScheme && !paperScheme.ok) throw badRequest(paperScheme.message)
+  const scheme = paperScheme?.ok ? paperScheme.components : null
+  const assessmentMax = scheme ? 100 : input.maxScore
+
   const status: MarkWorkflowStatus = input.action === 'submit' ? 'SUBMITTED' : 'DRAFT'
   const now = new Date().toISOString()
   const typeLabel =
@@ -605,7 +653,8 @@ export async function submitClassSubjectMarks(
     subjectId: input.subjectId,
     streamId,
     termId,
-    maxScore: input.maxScore,
+    maxScore: assessmentMax,
+    ...(scheme ? { components: scheme } : {}),
     status,
     classId: input.classId,
     ...(periodType === 'MONTHLY' || periodType === 'MOCK'
@@ -639,14 +688,19 @@ export async function submitClassSubjectMarks(
         : classScale
       scaleByLevel.set(levelKey, studentScale)
     }
-    const grade = gradeFromScore(entry.score, input.maxScore, studentScale)
+    const resolved = scheme
+      ? resolvePaperScores(scheme, entry.components, studentScale)
+      : null
+    const score = resolved?.score ?? entry.score
+    const grade = resolved?.grade ?? gradeFromScore(entry.score, assessmentMax, studentScale)
     const remark = buildMarkComment(entry.commentMode, grade, entry.comment)
     const row: Mark = {
       id: markId,
       assessmentId,
       studentId: entry.studentId,
-      score: entry.score,
+      score,
       grade,
+      ...(resolved ? { components: resolved.components } : {}),
       status,
       commentMode: remark.commentMode,
       comment: remark.comment,

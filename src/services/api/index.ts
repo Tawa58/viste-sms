@@ -37,6 +37,14 @@ import {
   transportRiders,
   transportPayments,
 } from '@/mocks/data'
+import {
+  isExamPaperPeriod,
+  normalizeExamScheme,
+  paperFinalPercent,
+  roundExamPercent,
+  snapshotPaperMarks,
+} from '@/lib/exam-papers'
+import { gradeFromScore } from '@/lib/grading'
 import type {
   Announcement,
   AppUser,
@@ -896,15 +904,27 @@ const mockCatalogService = {
     weekOf?: string
     termId?: string
     maxScore?: number
+    components?: {
+      key: 'paper1' | 'paper2' | 'paper3' | 'paper4' | 'practical'
+      label: string
+      maxScore: number
+      weight: number
+    }[]
     action: 'draft' | 'submit'
     entries: {
       studentId: string
       score: number
+      components?: { key: 'paper1' | 'paper2' | 'paper3' | 'paper4' | 'practical'; score: number }[]
       commentMode?: 'NONE' | 'AUTO' | 'CUSTOM'
       comment?: string
     }[]
   }) => {
-    const maxScore = input.maxScore ?? 100
+    const scheme =
+      input.components?.length && isExamPaperPeriod(input.periodType)
+        ? normalizeExamScheme(input.components)
+        : null
+    if (scheme && !scheme.ok) throw new Error(scheme.message)
+    const maxScore = scheme?.ok ? 100 : (input.maxScore ?? 100)
     const status =
       input.action === 'submit' ? ('SUBMITTED' as const) : ('DRAFT' as const)
     const assessmentId =
@@ -935,6 +955,7 @@ const mockCatalogService = {
       streamId: 'stream-1',
       termId: input.termId ?? 'term-1',
       maxScore,
+      ...(scheme?.ok ? { components: scheme.components } : {}),
       status,
       classId: input.classId,
       month: input.month,
@@ -945,14 +966,32 @@ const mockCatalogService = {
     }
     assessments.unshift(assessment)
     const nextMarks = input.entries.map((e) => {
-      const pct = (e.score / maxScore) * 100
-      const grade = pct >= 85 ? 'A' : pct >= 70 ? 'B' : pct >= 60 ? 'C' : pct >= 50 ? 'D' : 'U'
+      const paper =
+        scheme?.ok
+          ? paperFinalPercent(scheme.components, e.components ?? [])
+          : null
+      if (paper?.invalid) throw new Error(paper.message)
+      if (paper && !paper.complete) throw new Error('Enter a mark for every paper')
+      const score = paper ? roundExamPercent(paper.percent) : e.score
+      const pct = (score / maxScore) * 100
+      const grade = paper
+        ? gradeFromScore(score, 100)
+        : pct >= 85
+          ? 'A'
+          : pct >= 70
+            ? 'B'
+            : pct >= 60
+              ? 'C'
+              : pct >= 50
+                ? 'D'
+                : 'U'
       const row: Mark = {
         id: `mk_${assessment.id}_${e.studentId}`,
         assessmentId: assessment.id,
         studentId: e.studentId,
-        score: e.score,
+        score,
         grade,
+        ...(scheme?.ok ? { components: snapshotPaperMarks(scheme.components, e.components ?? []) } : {}),
         status: assessment.status,
         commentMode: e.commentMode,
         comment: e.comment,

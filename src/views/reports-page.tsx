@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { formatMarkComponents } from '@/lib/exam-papers'
 import { staffCategoryLabel } from '@/lib/staff-categories'
 import { educationLevelName } from '@/lib/education-levels'
 import { notify } from '@/lib/notify'
@@ -379,7 +380,9 @@ export function ReportsPage() {
           subjectName[x.a!.subjectId] || x.a!.subjectId,
           studentName[x.m.studentId] || x.m.studentId,
           className[x.a!.classId || ''] || '—',
-          String(x.m.score),
+          x.m.components?.length
+            ? `${x.m.score} (${formatMarkComponents(x.m.components)})`
+            : String(x.m.score),
           x.m.grade || '—',
           x.m.status,
         ])
