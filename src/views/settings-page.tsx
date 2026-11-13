@@ -21,6 +21,14 @@ import {
   formatRoleLabel,
   isStaffRole,
 } from '@/lib/roles'
+import {
+  DEFAULT_PRIMARY_UNIT_BANDS,
+  defaultCommentForUnit,
+  gradeFromScore,
+  isPrimaryUnitBands,
+  unitNumberFromLabel,
+  validatePrimaryUnitBands,
+} from '@/lib/grading'
 import { catalogService } from '@/services/api'
 import {
   FEE_CATEGORIES,
@@ -33,6 +41,7 @@ import type {
   AcademicYear,
   AuthUser,
   FeePolicy,
+  GradeBand,
   GradingScalesBundle,
   GradingTrack,
   SchoolProfile,
@@ -1314,6 +1323,107 @@ function FeePolicyPanel() {
   )
 }
 
+function withUnitBands(bundle: GradingScalesBundle): GradingScalesBundle {
+  const tracks = ['ECD', 'PRIMARY', 'FORM_1_4', 'FORM_5_6'] as const
+  const next = { ...bundle }
+  for (const id of tracks) {
+    const scale = next[id]
+    const scheme = scale.scheme ?? (id === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')
+    if (scheme === 'UNITS' && !isPrimaryUnitBands(scale.bands)) {
+      next[id] = {
+        ...scale,
+        scheme: 'UNITS',
+        bands: DEFAULT_PRIMARY_UNIT_BANDS.map((band) => ({ ...band })),
+      }
+    }
+  }
+  return next
+}
+
+function UnitBandEditor({
+  bands,
+  onChange,
+}: {
+  bands: GradeBand[]
+  onChange: (bands: GradeBand[]) => void
+}) {
+  const rows = [...bands].sort(
+    (a, b) => (unitNumberFromLabel(b.grade) ?? 0) - (unitNumberFromLabel(a.grade) ?? 0),
+  )
+  const checked = validatePrimaryUnitBands(bands)
+  const previewScale = checked.ok ? { scheme: 'UNITS' as const, bands: checked.bands } : null
+  const bandError = checked.ok ? '' : checked.message
+
+  function updateRow(unit: number, patch: Partial<GradeBand>) {
+    onChange(
+      bands.map((band) => (unitNumberFromLabel(band.grade) === unit ? { ...band, ...patch } : band)),
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Label>Units 1 to 9</Label>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => onChange(DEFAULT_PRIMARY_UNIT_BANDS.map((band) => ({ ...band })))}
+        >
+          Reset 1–9 defaults
+        </Button>
+      </div>
+      <p className={previewScale ? 'text-xs text-muted-foreground' : 'text-xs text-destructive'}>
+        {previewScale
+          ? `9 out of 10 is 90% and becomes ${gradeFromScore(9, 10, previewScale)}. 5 out of 10 is 50% and becomes ${gradeFromScore(5, 10, previewScale)}. Change a range to move 50% between units.`
+          : bandError}
+      </p>
+      <div className="space-y-3">
+        {rows.map((band) => {
+          const unit = unitNumberFromLabel(band.grade)
+          if (unit == null) return null
+          return (
+            <div key={unit} className="space-y-2 rounded-xl border border-border p-3">
+              <p className="text-sm font-medium">Unit {unit}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label>From %</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={band.minPercent}
+                    onChange={(e) => updateRow(unit, { minPercent: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>To %</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={band.maxPercent}
+                    onChange={(e) => updateRow(unit, { maxPercent: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Comment</Label>
+                <Textarea
+                  rows={2}
+                  value={band.comment ?? ''}
+                  placeholder={defaultCommentForUnit(unit)}
+                  onChange={(e) => updateRow(unit, { comment: e.target.value })}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function GradingScalePanel() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -1326,7 +1436,7 @@ function GradingScalePanel() {
       try {
         const data = await catalogService.getGradingScale()
         if (!mounted) return
-        setScales(data)
+        setScales(withUnitBands(data))
       } catch (err) {
         console.error(err)
         notify.error('Could not load grading scales')
@@ -1344,7 +1454,7 @@ function GradingScalePanel() {
   function updateActive(
     patch: Partial<{
       passMark: number
-      bands: { grade: string; minPercent: number; maxPercent: number }[]
+      bands: GradeBand[]
       scheme: 'PERCENT_BANDS' | 'UNITS'
       marksPerUnit: number
     }>,
@@ -1359,18 +1469,19 @@ function GradingScalePanel() {
   async function save() {
     if (!active) return
     const scheme = active.scheme ?? (track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')
-    if (scheme === 'UNITS') {
-      if (!active.marksPerUnit || active.marksPerUnit < 1) {
-        notify.error('Set how many marks make 1 unit')
-        return
-      }
-    } else {
+    const unitBands = scheme === 'UNITS' ? validatePrimaryUnitBands(active.bands) : null
+    if (unitBands && !unitBands.ok) {
+      notify.error(unitBands.message)
+      return
+    }
+    if (!unitBands) {
       const labels = active.bands.map((b) => b.grade.trim().toUpperCase()).filter(Boolean)
       if (labels.length < 1) {
         notify.error('Add at least one grade band')
         return
       }
     }
+    const bands = unitBands && unitBands.ok ? unitBands.bands : active.bands
     setSaving(true)
     try {
       const next = (await notify.process(
@@ -1378,15 +1489,14 @@ function GradingScalePanel() {
           catalogService.updateGradingScale({
             track,
             passMark: active.passMark,
-            bands: active.bands,
+            bands,
             scheme,
-            marksPerUnit: active.marksPerUnit,
           }) as Promise<GradingScalesBundle>,
         {
           loading: `Saving ${active.label}…`,
           success:
             scheme === 'UNITS'
-              ? `${active.label} saved — ${active.marksPerUnit} marks make 1 unit`
+              ? `${active.label} saved — units 1 to 9 follow these percentage bands`
               : `${active.label} saved — monthly and term exams use these bands`,
           error: 'Could not save grading scale',
         },
@@ -1424,8 +1534,8 @@ function GradingScalePanel() {
       <CardHeader>
         <CardTitle>Grading scales</CardTitle>
         <CardDescription>
-          ECD and secondary use letter grades. Grades 1–7 use units — set how many marks make one
-          unit.
+          ECD and secondary use letter grades. Grades 1–7 use units 1 to 9. Set the percentage
+          range and the comment for each unit.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -1453,7 +1563,8 @@ function GradingScalePanel() {
         <Alert title={active.label} tone="info">
           {{
             ECD: 'Used for ECD classes.',
-            PRIMARY: 'Used for Grade 1 through Grade 7. Results show units, not A–E letters.',
+            PRIMARY:
+              'Used for Grade 1 through Grade 7. A mark becomes a percentage of the test maximum, then the unit whose range contains that percentage.',
             FORM_1_4: 'Used for Form 1, 2, 3 and 4 classes (O-Level track).',
             FORM_5_6: 'Used for Form 5 and 6 classes (A-Level track).',
           }[track]}
@@ -1475,7 +1586,9 @@ function GradingScalePanel() {
             onClick={() =>
               updateActive({
                 scheme: 'UNITS',
-                marksPerUnit: active.marksPerUnit && active.marksPerUnit > 0 ? active.marksPerUnit : 10,
+                bands: isPrimaryUnitBands(active.bands)
+                  ? active.bands
+                  : DEFAULT_PRIMARY_UNIT_BANDS.map((band) => ({ ...band })),
               })
             }
           >
@@ -1484,20 +1597,10 @@ function GradingScalePanel() {
         </div>
 
         {(active.scheme ?? (track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')) === 'UNITS' ? (
-          <Field className="max-w-xs">
-            <Label>Marks that make 1 unit</Label>
-            <Input
-              type="number"
-              min={1}
-              max={200}
-              value={active.marksPerUnit ?? 10}
-              onChange={(e) => updateActive({ marksPerUnit: Number(e.target.value) })}
-            />
-            <p className="text-xs text-muted-foreground">
-              Units are counted from the mark as a percentage of that test’s maximum. 10 points
-              make 1 unit, so 9 out of 10 is 9 units and 35 out of 100 is 3 units.
-            </p>
-          </Field>
+          <UnitBandEditor
+            bands={active.bands}
+            onChange={(bands) => updateActive({ bands })}
+          />
         ) : null}
 
         <Field className="max-w-xs">

@@ -15,7 +15,7 @@ import {
 } from '@/server/services/finance-service'
 import { getGradingScaleForEducationLevel, gradeFromScore } from '@/server/services/grading-service'
 import { formatMarkComponents } from '@/lib/exam-papers'
-import { formatUnitGrade, isUnitsScale, unitsFromScore } from '@/lib/grading'
+import { formatUnitGrade, isPrimaryUnitBands, isUnitsScale, unitsFromScore } from '@/lib/grading'
 import { currentMonthPeriod, invoiceBalance, invoicesForBillingPeriod } from '@/lib/fees'
 import { getResultsPortal } from '@/server/services/results-service'
 import { getFeePolicy, getSchoolProfile } from '@/server/services/school-settings-service'
@@ -249,15 +249,15 @@ function summarize(entries: ResultEntry[], scale: GradingScale) {
       const percents = sorted.map((e) => (e.score / e.maxScore) * 100)
       const percent = percents.reduce((s, p) => s + p, 0) / percents.length
       const single = sorted.length === 1 ? sorted[0] : null
-      const averagedUnits = isUnitsScale(scale)
-        ? Math.floor(
-            sorted.reduce(
-              (sum, e) => sum + unitsFromScore(e.score, scale.marksPerUnit, e.maxScore),
-              0,
-            ) /
-              sorted.length,
-          )
-        : null
+      const averagedUnits =
+        !isPrimaryUnitBands(scale.bands) && isUnitsScale(scale)
+          ? Math.floor(
+              sorted.reduce(
+                (sum, e) => sum + unitsFromScore(e.score, scale.marksPerUnit, e.maxScore),
+                0,
+              ) / sorted.length,
+            )
+          : null
       return {
         subject,
         score: single ? single.score : Math.round(percent * 10) / 10,
@@ -277,19 +277,21 @@ function summarize(entries: ResultEntry[], scale: GradingScale) {
   return {
     rows,
     average,
-    averageGrade:
+        averageGrade:
       average == null
         ? undefined
-        : isUnitsScale(scale)
-          ? formatUnitGrade(
-              Math.floor(
-                rows.reduce((sum, r) => {
-                  const n = Number(String(r.grade).match(/\d+/)?.[0])
-                  return sum + (Number.isFinite(n) ? n : 0)
-                }, 0) / rows.length,
-              ),
-            )
-          : gradeFromScore(average, 100, scale),
+        : isPrimaryUnitBands(scale.bands)
+          ? gradeFromScore(average, 100, scale)
+          : isUnitsScale(scale)
+            ? formatUnitGrade(
+                Math.floor(
+                  rows.reduce((sum, r) => {
+                    const n = Number(String(r.grade).match(/\d+/)?.[0])
+                    return sum + (Number.isFinite(n) ? n : 0)
+                  }, 0) / rows.length,
+                ),
+              )
+            : gradeFromScore(average, 100, scale),
   }
 }
 

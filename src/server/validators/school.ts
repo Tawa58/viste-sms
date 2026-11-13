@@ -508,6 +508,7 @@ export const gradingScaleSchema = z
           grade: z.string().min(1).max(16),
           minPercent: z.number().min(0).max(100),
           maxPercent: z.number().min(0).max(100),
+          comment: z.string().max(300).optional(),
         }),
       )
       .max(20)
@@ -516,11 +517,11 @@ export const gradingScaleSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.scheme === 'UNITS') {
-      if (!data.marksPerUnit) {
+      if (data.bands.length !== 9) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'Set how many marks make 1 unit',
-          path: ['marksPerUnit'],
+          message: 'Grades 1–7 need one band for each unit from 1 to 9',
+          path: ['bands'],
         })
       }
       return
