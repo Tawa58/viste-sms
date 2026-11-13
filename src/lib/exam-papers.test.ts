@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { isFormOneToSixLevel } from '@/lib/education-levels'
 import { gradeFromScore } from '@/lib/grading'
 import {
   describeExamRatio,
@@ -103,5 +104,16 @@ describe('final symbol from paper ratios', () => {
     const final = paperFinalPercent(single.components, [{ key: 'paper1', score: 40 }])
     expect(roundExamPercent(final.percent)).toBe(80)
     expect(gradeFromScore(roundExamPercent(final.percent), 100, oLevel)).toBe('A')
+  })
+})
+
+describe('Form 1 to Form 6 classes', () => {
+  it('recognises form class names and leaves ECD and primary out', () => {
+    expect(isFormOneToSixLevel('form-1')).toBe(true)
+    expect(isFormOneToSixLevel('Form 4A')).toBe(true)
+    expect(isFormOneToSixLevel('Form 5 ARTS')).toBe(true)
+    expect(isFormOneToSixLevel('form-6')).toBe(true)
+    expect(isFormOneToSixLevel('ECD A')).toBe(false)
+    expect(isFormOneToSixLevel('Grade 7')).toBe(false)
   })
 })

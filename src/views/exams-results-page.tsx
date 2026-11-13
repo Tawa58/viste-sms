@@ -19,7 +19,7 @@ import {
   gradeFromScore,
   isUnitsScale,
 } from '@/lib/grading'
-import { gradingTrackForLevel, gradingTrackLabel } from '@/lib/education-levels'
+import { gradingTrackForLevel, gradingTrackLabel, isFormOneToSixLevel } from '@/lib/education-levels'
 import {
   describeExamRatio,
   examComponentLabel,
@@ -151,7 +151,7 @@ export function ExaminationsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Examinations & marks"
-        description="Enter class marks by subject, submit for admin approval, then release to the student portal."
+        description="Form 1 to Form 6 exam subjects take Paper 1 to Paper 4, plus a practical, on End of term exam and Mock exam. Monthly, weekly, and daily tests stay one mark."
         breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Examinations' }]}
       />
 
@@ -302,6 +302,9 @@ function ClassSubjectMarksPanel() {
     [students, classId],
   )
   const selectedClass = classes.find((c) => c.id === classId)
+  const formExamClass = isFormOneToSixLevel(
+    selectedClass?.educationLevelId || selectedClass?.level || selectedClass?.name,
+  )
   const activeScale = gradingScales?.[
     gradingTrackForLevel(selectedClass?.educationLevelId ?? selectedClass?.level)
   ]
@@ -667,9 +670,9 @@ function ClassSubjectMarksPanel() {
       <CardHeader>
         <CardTitle>Create assessment & enter marks</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Choose daily, monthly, weekly, mock, or end-of-term. Mock and end-of-term exams take a
-          mark for each paper, and a practical where the subject has one. The final symbol uses
-          the paper ratio and this class&apos;s examination scale. Submit for admin approval.
+          Form 1 to Form 6 exam subjects use <strong>End of term exam</strong> or{' '}
+          <strong>Mock exam</strong>. Those sheets take Paper 1, Paper 2, Paper 3, Paper 4, and a
+          practical where the subject has one. Monthly, weekly, and daily tests stay one mark.
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -683,11 +686,11 @@ function ClassSubjectMarksPanel() {
         <div className="flex flex-wrap gap-2">
           {(
             [
+              ['TERMLY', 'End of term exam'],
+              ['MOCK', 'Mock exam'],
               ['MONTHLY', 'Monthly'],
-              ['DAILY', 'Daily'],
               ['WEEKLY', 'Weekly'],
-              ['MOCK', 'Mock'],
-              ['TERMLY', 'End of term'],
+              ['DAILY', 'Daily'],
             ] as const
           ).map(([value, label]) => (
             <Button
@@ -778,8 +781,32 @@ function ClassSubjectMarksPanel() {
           )}
         </div>
 
+        {formExamClass && !isPaperPeriod ? (
+          <Alert title="Form 1–6 exam papers are not on this sheet" tone="info">
+            This monthly, weekly, or daily test is still one mark. For a Form 1 to Form 6 exam
+            subject, open End of term exam or Mock exam to enter Paper 1 to Paper 4 and a practical.
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={() => setPeriodType('TERMLY')}>
+                End of term exam
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setPeriodType('MOCK')}>
+                Mock exam
+              </Button>
+            </div>
+          </Alert>
+        ) : null}
+
         {isPaperPeriod ? (
-          <div className="space-y-3 rounded-xl border border-border bg-muted/30 p-3">
+          <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
+            <div>
+              <p className="text-sm font-semibold">
+                {formExamClass ? 'Form 1–6 papers for this subject' : 'Papers for this subject'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Choose how many papers were written. Add a practical if this subject has one, then
+                enter each learner’s mark in the columns below.
+              </p>
+            </div>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="space-y-1.5">
                 <Label>Papers written</Label>
@@ -812,55 +839,44 @@ function ClassSubjectMarksPanel() {
                 Practical assessment
               </label>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[28rem] text-left text-sm">
-                <thead className="text-muted-foreground">
-                  <tr>
-                    <th className="px-2 py-1 font-medium">Component</th>
-                    <th className="px-2 py-1 font-medium">Maximum mark</th>
-                    <th className="px-2 py-1 font-medium">Ratio</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {componentDrafts.map((draft) => (
-                    <tr key={draft.key}>
-                      <td className="px-2 py-1 font-medium">{examComponentLabel(draft.key)}</td>
-                      <td className="px-2 py-1">
-                        <Input
-                          type="number"
-                          min={1}
-                          max={1000}
-                          className="w-28"
-                          value={draft.maxScore}
-                          onChange={(e) =>
-                            setComponentDrafts((prev) =>
-                              prev.map((row) =>
-                                row.key === draft.key ? { ...row, maxScore: e.target.value } : row,
-                              ),
-                            )
-                          }
-                        />
-                      </td>
-                      <td className="px-2 py-1">
-                        <Input
-                          type="number"
-                          min={0.01}
-                          step="0.01"
-                          className="w-28"
-                          value={draft.weight}
-                          onChange={(e) =>
-                            setComponentDrafts((prev) =>
-                              prev.map((row) =>
-                                row.key === draft.key ? { ...row, weight: e.target.value } : row,
-                              ),
-                            )
-                          }
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {componentDrafts.map((draft) => (
+                <div key={draft.key} className="grid grid-cols-2 gap-2">
+                  <p className="col-span-2 text-sm font-medium">{examComponentLabel(draft.key)}</p>
+                  <div className="space-y-1">
+                    <Label>Maximum mark</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={draft.maxScore}
+                      onChange={(e) =>
+                        setComponentDrafts((prev) =>
+                          prev.map((row) =>
+                            row.key === draft.key ? { ...row, maxScore: e.target.value } : row,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Ratio</Label>
+                    <Input
+                      type="number"
+                      min={0.01}
+                      step="0.01"
+                      value={draft.weight}
+                      onChange={(e) =>
+                        setComponentDrafts((prev) =>
+                          prev.map((row) =>
+                            row.key === draft.key ? { ...row, weight: e.target.value } : row,
+                          ),
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
             <p className="text-xs text-muted-foreground">
               {(() => {
