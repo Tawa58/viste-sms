@@ -1494,7 +1494,8 @@ function GradingScalePanel() {
               onChange={(e) => updateActive({ marksPerUnit: Number(e.target.value) })}
             />
             <p className="text-xs text-muted-foreground">
-              Example: 10 marks = 1 unit, so 20 marks = 2 units. A score of 35 becomes 3 units.
+              Units are counted from the mark as a percentage of that test’s maximum. 10 points
+              make 1 unit, so 9 out of 10 is 9 units and 35 out of 100 is 3 units.
             </p>
           </Field>
         ) : null}

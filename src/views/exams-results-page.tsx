@@ -492,6 +492,7 @@ function ClassSubjectMarksPanel() {
   }
 
   function previewGrade(scoreStr: string) {
+    if (!scoreStr.trim()) return '—'
     const score = Number(scoreStr)
     if (!Number.isFinite(score)) return '—'
     return gradeFromScore(score, maxScore, activeScale)
@@ -876,8 +877,9 @@ function ClassSubjectMarksPanel() {
 
         {currentAssessment ? (
           <p className="text-xs text-muted-foreground">
-            Current sheet: <StatusBadge status={currentAssessment.status} />{' '}
-            {currentAssessment.name}
+            Current sheet:{' '}
+            <StatusBadge status={currentAssessment.status || 'DRAFT'} />{' '}
+            {currentAssessment.name || 'Mark sheet'}
           </p>
         ) : null}
 

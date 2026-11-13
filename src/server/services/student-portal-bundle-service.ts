@@ -251,7 +251,10 @@ function summarize(entries: ResultEntry[], scale: GradingScale) {
       const single = sorted.length === 1 ? sorted[0] : null
       const averagedUnits = isUnitsScale(scale)
         ? Math.floor(
-            sorted.reduce((sum, e) => sum + unitsFromScore(e.score, scale.marksPerUnit), 0) /
+            sorted.reduce(
+              (sum, e) => sum + unitsFromScore(e.score, scale.marksPerUnit, e.maxScore),
+              0,
+            ) /
               sorted.length,
           )
         : null

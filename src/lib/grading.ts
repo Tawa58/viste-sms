@@ -1,8 +1,16 @@
 import type { GradeBand, GradingScale } from '@/types'
 
-export function unitsFromScore(score: number, marksPerUnit: number): number {
+/**
+ * Whole units for ECD and primary.
+ * The raw mark is first scaled to a percentage of `maxScore`, then divided by
+ * how many of those points make one unit. A mark of 9 out of 10 is 90%, which
+ * is 9 units when 10 points make 1 unit — not 0 units from the raw 9.
+ */
+export function unitsFromScore(score: number, marksPerUnit: number, maxScore = 100): number {
   if (!(marksPerUnit > 0)) return 0
-  return Math.floor(Math.max(0, score) / marksPerUnit)
+  const max = maxScore > 0 ? maxScore : 100
+  const normalized = (Math.max(0, score) / max) * 100
+  return Math.floor(normalized / marksPerUnit)
 }
 
 export function formatUnitGrade(units: number): string {
@@ -50,7 +58,7 @@ export function gradeFromScore(
   scale?: Pick<GradingScale, 'bands' | 'scheme' | 'marksPerUnit'> | null,
 ): string {
   if (isUnitsScale(scale)) {
-    return formatUnitGrade(unitsFromScore(score, scale.marksPerUnit))
+    return formatUnitGrade(unitsFromScore(score, scale.marksPerUnit, maxScore))
   }
   const max = maxScore > 0 ? maxScore : 100
   const percent = (score / max) * 100
