@@ -110,12 +110,12 @@ describe('configurable 1 to 9 unit bands', () => {
 describe('A-Level grades', () => {
   it('uses O and F instead of U', () => {
     const labels = PREVIEW_FORM_5_6_BANDS.map((band) => band.grade)
-    expect(labels).toEqual(['A', 'B', 'C', 'D', 'E', 'O', 'F'])
+    expect(labels).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'O'])
     expect(gradeFromPercent(40, PREVIEW_FORM_5_6_BANDS)).toBe('E')
-    expect(gradeFromPercent(25, PREVIEW_FORM_5_6_BANDS)).toBe('O')
-    expect(gradeFromPercent(10, PREVIEW_FORM_5_6_BANDS)).toBe('F')
-    expect(autoCommentForGrade('O')).toMatch(/Ordinary pass/)
+    expect(gradeFromPercent(25, PREVIEW_FORM_5_6_BANDS)).toBe('F')
+    expect(gradeFromPercent(10, PREVIEW_FORM_5_6_BANDS)).toBe('O')
     expect(autoCommentForGrade('F')).toMatch(/Fail/)
+    expect(autoCommentForGrade('O')).toMatch(/Ordinary/)
   })
 
   it('replaces a saved U band with O and F', () => {
@@ -124,8 +124,8 @@ describe('A-Level grades', () => {
       { grade: 'E', minPercent: 35, maxPercent: 44 },
       { grade: 'U', minPercent: 0, maxPercent: 34 },
     ])
-    expect(migrated.map((band) => band.grade)).toEqual(['A', 'E', 'O', 'F'])
-    expect(gradeFromPercent(22, migrated)).toBe('O')
-    expect(gradeFromPercent(8, migrated)).toBe('F')
+    expect(migrated.map((band) => band.grade)).toEqual(['A', 'E', 'F', 'O'])
+    expect(gradeFromPercent(22, migrated)).toBe('F')
+    expect(gradeFromPercent(8, migrated)).toBe('O')
   })
 })

@@ -1571,7 +1571,7 @@ function GradingScalePanel() {
               'Used for Grade 1 through Grade 7. A mark becomes a percentage of the test maximum, then the unit whose range contains that percentage.',
             FORM_1_4: 'Used for Form 1, 2, 3 and 4 classes (O-Level track).',
             FORM_5_6:
-              'Used for Form 5 and 6. A-Level grades are A, B, C, D, E, then O and F.',
+              'Used for Form 5 and 6. A-Level grades are A, B, C, D, E, then F and O.',
           }[track]}
         </Alert>
 
@@ -1624,7 +1624,7 @@ function GradingScalePanel() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Label>
               {track === 'FORM_5_6'
-                ? 'Grade bands (A, B, C, D, E, O, F)'
+                ? 'Grade bands (A, B, C, D, E, F, O)'
                 : 'Grade bands (A, B, C, D, E, U)'}
             </Label>
             <div className="flex flex-wrap gap-2">

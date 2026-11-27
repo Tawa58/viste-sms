@@ -48,7 +48,7 @@ export const DEFAULT_PRIMARY_SCALE: GradingScale = {
 /** Zimbabwe-style O-Level defaults (Form 1–4). */
 export const DEFAULT_FORM_1_4_SCALE: GradingScale = defaultScale('FORM_1_4', STANDARD_BANDS)
 
-/** A-Level defaults (Form 5–6): A–E, then O and F. */
+/** A-Level defaults (Form 5–6): A–E, then F, then O. */
 export const DEFAULT_FORM_5_6_SCALE: GradingScale = defaultScale(
   'FORM_5_6',
   PREVIEW_FORM_5_6_BANDS.map((band) => ({ ...band })),
