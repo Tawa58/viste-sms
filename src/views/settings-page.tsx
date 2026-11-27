@@ -23,6 +23,7 @@ import {
 } from '@/lib/roles'
 import {
   DEFAULT_PRIMARY_UNIT_BANDS,
+  PREVIEW_FORM_5_6_BANDS,
   defaultCommentForUnit,
   gradeFromScore,
   isPrimaryUnitBands,
@@ -1509,14 +1510,17 @@ function GradingScalePanel() {
 
   function ensureStandardBands() {
     updateActive({
-      bands: [
-        { grade: 'A', minPercent: track === 'FORM_5_6' ? 75 : 80, maxPercent: 100 },
-        { grade: 'B', minPercent: track === 'FORM_5_6' ? 65 : 70, maxPercent: track === 'FORM_5_6' ? 74 : 79 },
-        { grade: 'C', minPercent: track === 'FORM_5_6' ? 55 : 60, maxPercent: track === 'FORM_5_6' ? 64 : 69 },
-        { grade: 'D', minPercent: track === 'FORM_5_6' ? 45 : 50, maxPercent: track === 'FORM_5_6' ? 54 : 59 },
-        { grade: 'E', minPercent: track === 'FORM_5_6' ? 35 : 40, maxPercent: track === 'FORM_5_6' ? 44 : 49 },
-        { grade: 'U', minPercent: 0, maxPercent: track === 'FORM_5_6' ? 34 : 39 },
-      ],
+      bands:
+        track === 'FORM_5_6'
+          ? PREVIEW_FORM_5_6_BANDS.map((band) => ({ ...band }))
+          : [
+              { grade: 'A', minPercent: 80, maxPercent: 100 },
+              { grade: 'B', minPercent: 70, maxPercent: 79 },
+              { grade: 'C', minPercent: 60, maxPercent: 69 },
+              { grade: 'D', minPercent: 50, maxPercent: 59 },
+              { grade: 'E', minPercent: 40, maxPercent: 49 },
+              { grade: 'U', minPercent: 0, maxPercent: 39 },
+            ],
       passMark: 50,
     })
   }
@@ -1566,7 +1570,8 @@ function GradingScalePanel() {
             PRIMARY:
               'Used for Grade 1 through Grade 7. A mark becomes a percentage of the test maximum, then the unit whose range contains that percentage.',
             FORM_1_4: 'Used for Form 1, 2, 3 and 4 classes (O-Level track).',
-            FORM_5_6: 'Used for Form 5 and 6 classes (A-Level track).',
+            FORM_5_6:
+              'Used for Form 5 and 6. A-Level grades are A, B, C, D, E, then O and F.',
           }[track]}
         </Alert>
 
@@ -1617,10 +1622,14 @@ function GradingScalePanel() {
         {(active.scheme ?? (track === 'PRIMARY' ? 'UNITS' : 'PERCENT_BANDS')) === 'PERCENT_BANDS' ? (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <Label>Grade bands (A, B, C, D, E, U)</Label>
+            <Label>
+              {track === 'FORM_5_6'
+                ? 'Grade bands (A, B, C, D, E, O, F)'
+                : 'Grade bands (A, B, C, D, E, U)'}
+            </Label>
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="outline" onClick={ensureStandardBands}>
-                Reset A–U defaults
+                {track === 'FORM_5_6' ? 'Reset A-Level defaults' : 'Reset A–U defaults'}
               </Button>
               <Button
                 type="button"

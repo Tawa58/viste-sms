@@ -7,6 +7,8 @@ import { getDoc, setDoc } from '@/server/repositories/firestore-repo'
 import { gradingTrackForLevel, gradingTrackLabel } from '@/lib/education-levels'
 import {
   DEFAULT_PRIMARY_UNIT_BANDS,
+  PREVIEW_FORM_5_6_BANDS,
+  aLevelBandsReplacingU,
   gradeFromScore as gradeFromScoreLib,
   isPrimaryUnitBands,
   validatePrimaryUnitBands,
@@ -46,15 +48,11 @@ export const DEFAULT_PRIMARY_SCALE: GradingScale = {
 /** Zimbabwe-style O-Level defaults (Form 1–4). */
 export const DEFAULT_FORM_1_4_SCALE: GradingScale = defaultScale('FORM_1_4', STANDARD_BANDS)
 
-/** A-Level defaults (Form 5–6). */
-export const DEFAULT_FORM_5_6_SCALE: GradingScale = defaultScale('FORM_5_6', [
-    { grade: 'A', minPercent: 75, maxPercent: 100 },
-    { grade: 'B', minPercent: 65, maxPercent: 74 },
-    { grade: 'C', minPercent: 55, maxPercent: 64 },
-    { grade: 'D', minPercent: 45, maxPercent: 54 },
-    { grade: 'E', minPercent: 35, maxPercent: 44 },
-    { grade: 'U', minPercent: 0, maxPercent: 34 },
-  ])
+/** A-Level defaults (Form 5–6): A–E, then O and F. */
+export const DEFAULT_FORM_5_6_SCALE: GradingScale = defaultScale(
+  'FORM_5_6',
+  PREVIEW_FORM_5_6_BANDS.map((band) => ({ ...band })),
+)
 
 /** @deprecated Prefer track-specific defaults. */
 export const DEFAULT_GRADING_SCALE = DEFAULT_FORM_1_4_SCALE
@@ -95,10 +93,11 @@ function normalizeScale(
   const scheme =
     row.scheme ??
     (track === 'PRIMARY' || typeof row.marksPerUnit === 'number' ? 'UNITS' : 'PERCENT_BANDS')
-  const bands =
+  const resolved =
     scheme === 'UNITS' && !isPrimaryUnitBands(row.bands)
       ? fallback.bands.map((band) => ({ ...band }))
       : row.bands
+  const bands = track === 'FORM_5_6' ? aLevelBandsReplacingU(resolved) : resolved
   return {
     id: track,
     track,
