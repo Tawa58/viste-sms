@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aLevelBandsReplacingU,
   autoCommentForGrade,
   DEFAULT_PRIMARY_UNIT_BANDS,
   formatUnitGrade,
+  gradeFromPercent,
   gradeFromScore,
+  PREVIEW_FORM_5_6_BANDS,
   unitsFromScore,
   validatePrimaryUnitBands,
 } from '@/lib/grading'
@@ -101,5 +104,28 @@ describe('configurable 1 to 9 unit bands', () => {
     )
     const result = validatePrimaryUnitBands(gapped)
     expect(result.ok).toBe(false)
+  })
+})
+
+describe('A-Level grades', () => {
+  it('uses O and F instead of U', () => {
+    const labels = PREVIEW_FORM_5_6_BANDS.map((band) => band.grade)
+    expect(labels).toEqual(['A', 'B', 'C', 'D', 'E', 'O', 'F'])
+    expect(gradeFromPercent(40, PREVIEW_FORM_5_6_BANDS)).toBe('E')
+    expect(gradeFromPercent(25, PREVIEW_FORM_5_6_BANDS)).toBe('O')
+    expect(gradeFromPercent(10, PREVIEW_FORM_5_6_BANDS)).toBe('F')
+    expect(autoCommentForGrade('O')).toMatch(/Ordinary pass/)
+    expect(autoCommentForGrade('F')).toMatch(/Fail/)
+  })
+
+  it('replaces a saved U band with O and F', () => {
+    const migrated = aLevelBandsReplacingU([
+      { grade: 'A', minPercent: 75, maxPercent: 100 },
+      { grade: 'E', minPercent: 35, maxPercent: 44 },
+      { grade: 'U', minPercent: 0, maxPercent: 34 },
+    ])
+    expect(migrated.map((band) => band.grade)).toEqual(['A', 'E', 'O', 'F'])
+    expect(gradeFromPercent(22, migrated)).toBe('O')
+    expect(gradeFromPercent(8, migrated)).toBe('F')
   })
 })

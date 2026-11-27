@@ -44,7 +44,7 @@ import {
   roundExamPercent,
   snapshotPaperMarks,
 } from '@/lib/exam-papers'
-import { DEFAULT_PRIMARY_UNIT_BANDS, gradeFromScore } from '@/lib/grading'
+import { DEFAULT_PRIMARY_UNIT_BANDS, PREVIEW_FORM_5_6_BANDS, gradeFromScore } from '@/lib/grading'
 import type {
   Announcement,
   AppUser,
@@ -1072,12 +1072,7 @@ const mockCatalogService = {
         label: 'Form 5–6 (A-Level)',
         passMark: 50,
         bands: [
-          { grade: 'A', minPercent: 75, maxPercent: 100 },
-          { grade: 'B', minPercent: 65, maxPercent: 74 },
-          { grade: 'C', minPercent: 55, maxPercent: 64 },
-          { grade: 'D', minPercent: 45, maxPercent: 54 },
-          { grade: 'E', minPercent: 35, maxPercent: 44 },
-          { grade: 'U', minPercent: 0, maxPercent: 34 },
+          ...PREVIEW_FORM_5_6_BANDS.map((band) => ({ ...band })),
         ],
       },
     }),
@@ -1131,12 +1126,7 @@ const mockCatalogService = {
         label: 'Form 5–6 (A-Level)',
         passMark: 50,
         bands: [
-          { grade: 'A', minPercent: 75, maxPercent: 100 },
-          { grade: 'B', minPercent: 65, maxPercent: 74 },
-          { grade: 'C', minPercent: 55, maxPercent: 64 },
-          { grade: 'D', minPercent: 45, maxPercent: 54 },
-          { grade: 'E', minPercent: 35, maxPercent: 44 },
-          { grade: 'U', minPercent: 0, maxPercent: 34 },
+          ...PREVIEW_FORM_5_6_BANDS.map((band) => ({ ...band })),
         ],
       },
     }

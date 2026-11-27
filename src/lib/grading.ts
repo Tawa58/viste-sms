@@ -158,14 +158,44 @@ export const PREVIEW_FORM_1_4_BANDS: GradeBand[] = [
   { grade: 'U', minPercent: 0, maxPercent: 39 },
 ]
 
+/** A-Level (Form 5–6): A–E, then O and F. There is no U on this scale. */
 export const PREVIEW_FORM_5_6_BANDS: GradeBand[] = [
   { grade: 'A', minPercent: 75, maxPercent: 100 },
   { grade: 'B', minPercent: 65, maxPercent: 74 },
   { grade: 'C', minPercent: 55, maxPercent: 64 },
   { grade: 'D', minPercent: 45, maxPercent: 54 },
   { grade: 'E', minPercent: 35, maxPercent: 44 },
-  { grade: 'U', minPercent: 0, maxPercent: 34 },
+  { grade: 'O', minPercent: 20, maxPercent: 34 },
+  { grade: 'F', minPercent: 0, maxPercent: 19 },
 ]
+
+/**
+ * Older A-Level scales stored a single U below E. Split that band into O and F.
+ * Scales that already have both O and F are left as the school saved them.
+ */
+export function aLevelBandsReplacingU(bands: GradeBand[]): GradeBand[] {
+  const labels = new Set(bands.map((band) => band.grade.trim().toUpperCase()))
+  if (labels.has('O') && labels.has('F')) return bands
+  if (!labels.has('U')) return bands
+  const next: GradeBand[] = []
+  for (const band of bands) {
+    if (band.grade.trim().toUpperCase() !== 'U') {
+      next.push(band)
+      continue
+    }
+    if (band.minPercent <= 19 && band.maxPercent >= 20) {
+      next.push({ grade: 'O', minPercent: 20, maxPercent: band.maxPercent })
+      next.push({ grade: 'F', minPercent: band.minPercent, maxPercent: 19 })
+    } else if (band.maxPercent > band.minPercent) {
+      const cut = Math.floor((band.minPercent + band.maxPercent) / 2)
+      next.push({ grade: 'O', minPercent: cut + 1, maxPercent: band.maxPercent })
+      next.push({ grade: 'F', minPercent: band.minPercent, maxPercent: cut })
+    } else {
+      next.push({ ...band, grade: 'F' })
+    }
+  }
+  return next
+}
 
 /** Pure grading helper safe for client and server. */
 export function gradeFromPercent(percent: number, bands: GradeBand[]): string {
@@ -219,6 +249,10 @@ export function autoCommentForGrade(grade: string, bands?: GradeBand[]): string 
       return 'Fair effort. Extra practice is needed to improve.'
     case 'E':
       return 'Below expected standard. Seek support and revise regularly.'
+    case 'O':
+      return 'Ordinary pass. This is below an A-Level pass.'
+    case 'F':
+      return 'Fail. Immediate improvement and remedial work required.'
     case 'U':
       return 'Unsatisfactory. Immediate improvement and remedial work required.'
     default:
